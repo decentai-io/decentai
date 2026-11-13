@@ -6,7 +6,8 @@ An agent's program runs as one process for each chat using it.
 
 - It starts at the chat's first call to the agent.
 - It serves every call of that chat, together when they overlap.
-- It ends when the chat stops using it. The next call starts a fresh one.
+- It ends when the chat stops using it, or when the agent is updated or taken off the chat. The next call starts a
+  fresh one, of the version the chat now uses.
 - It is never shared between chats. A login handed to a call, or a page left open, stays in that chat's process.
 
 200 people each in a chat using the agent means 200 processes. When they stop, there are none.
@@ -16,8 +17,8 @@ while a chat is active.
 
 ## 2. The runtime ends an idle process
 
-The runtime ends a process once it has had no call in flight for 12 minutes. It never ends one while a call is
-in flight, since a function may run long.
+The runtime ends a process once it has had no call in flight for 12 minutes, looking every 30 seconds. It never ends
+one while a call is in flight, since a function may run long.
 
 The sandbox ends a process only for its own reasons, and says which
 ([sandbox](sandbox.md#8-capacity-and-failure)).
@@ -37,7 +38,8 @@ The runtime talks to the sandbox, never to the program.
 
 - The sandbox reads the program's lines. A broken line ends the process there, so the runtime never parses a
   program's bytes.
-- The sandbox relays whole messages and reads none of them ([sandbox](sandbox.md#5-the-program-protocol)). The
+- The sandbox relays whole messages and reads nothing in them but their `files`
+  ([sandbox](sandbox.md#5-the-program-protocol)). The
   runtime checks that a message names a call it sent to that process.
 - The sandbox knows programs and processes, never agents or chats ([sandbox](sandbox.md#1-what-it-is)).
 
@@ -55,15 +57,15 @@ Each message's `body` is a `type` and its `data`:
 | `ready` | program | `agent`, `version`, `functions` |
 | `call` | either | `function`, `inputs`; from the program also `within`, the call it belongs to |
 | `result` | either | `call`, `output` |
-| `error` | either | `call`, `message`: that call failed. With no `call`, the program itself failed |
+| `error` | either | `call`, `code`, `message`: that call failed. With no `call`, the program itself failed |
 | `cancel` | either | `call` |
 | `note` | either | `call`, and one of: `progress`, a line of what it's doing; `screen`, a picture of what it drives; `input`, what the human did on that screen |
 | `log` | the sandbox, or the program | `line` |
 
 ```
 runtime → {"_id":"c1","body":{"type":"call","data":{"function":"report","inputs":{}}}}
-program → {"_id":"p1","body":{"type":"call","data":{"within":"c1","function":"show","inputs":{"table":{…}}}}}
-runtime → {"_id":"r1","body":{"type":"result","data":{"call":"p1","output":{"display":"d7"}}}}
+program → {"_id":"p1","body":{"type":"call","data":{"within":"c1","function":"chat","inputs":{"table":{…}}}}}
+runtime → {"_id":"r1","body":{"type":"result","data":{"call":"p1","output":{"answer":null}}}}
 program → {"_id":"p2","body":{"type":"result","data":{"call":"c1","output":{"held":true,…}}}}
 ```
 
@@ -80,7 +82,10 @@ program → {"_id":"p2","body":{"type":"result","data":{"call":"c1","output":{"h
 - **A cancelled call** still ends with its `result` or `error`. One that hasn't within 5 seconds has its process
   ended, with every other call in flight on it.
 - **A process that ends** fails its calls in flight, with the sandbox's reason.
-- **The runtime checks** that every message naming a call names one in flight on that process.
+- **An `error` with no `call`** fails every call in flight on the process with its words, and ends the process.
+- **A call that outlives its `timeout_seconds`** is cancelled, and fails.
+- **The runtime checks** that every message naming a call names one in flight on that process, and ignores one
+  that doesn't.
 
 | Variable | Is | Default |
 |---|---|---|
@@ -101,26 +106,36 @@ resources:      # what it keeps for people: secrets, data, files
 network:        # where it connects
 ```
 
-**`agent`:** `id` (permanent: a new id is a new agent), `name`, `version`, `description`, `instructions` (what the
-model reads), `examples` (at most 6), `tags`.
+`schema` is `3`; `agent` and `functions` are required, the rest optional. An id, here and below (an agent's, a
+function's, a resource's, a field's, a scope's input), is a lowercase letter, then up to 39 lowercase letters, digits
+or `_`.
 
-**`functions`:** a flat list.
+**`agent`:** `id` (permanent: a new id is a new agent), `name` (at most 200 characters), `version` (`1.2.3`, with a
+`-` or `+` suffix if wanted), `description`; and optionally `instructions` (what the model reads; at most 4,000
+characters, as a description), `examples` (at most 6, each `{title, prompt}`: a title of at most 80 characters, a
+prompt of at most 500), `tags` (at most 10, each at most 40 characters).
+
+**`functions`:** a flat list, 1 to 100.
 
 | Key | Is |
 |---|---|
 | `id` | unique in the agent; what a `call` names in `function` |
 | `name`, `description` | for people, and for the model to decide when to call it |
 | `level` | 0 reads, 1 changes, 2 wider changes, 3 acts outside the platform. Above a chat's trust, a person approves first |
-| `timeout_seconds` | default 60, at most 3600. The clock stops while a person decides |
-| `inputs`, `outputs` | JSON Schema |
-| `calls` | what the function may call on the runtime |
-| `authorization` | which of its inputs carries each scope the agent declares |
-| `schedulable` | `true`: a schedule may run it with nobody present |
+| `timeout_seconds` | optional: default 60, at most 3600. The clock stops while a person decides |
+| `inputs`, `outputs` | JSON Schema, each checked to be one; `outputs` optional |
+| `calls` | optional: what the function may call on the runtime, at most 50 ([6](#6-what-a-program-may-call)) |
+| `authorization` | optional: which of its inputs carries each scope the agent declares |
+| `schedulable` | optional: `true`, a schedule may run it with nobody present |
+
+`id`, `name`, `description`, `level` and `inputs` are required.
 
 **`authorization`:** the scopes a deployment's policy can narrow: a notebook, a project, a mailbox. Each has a
 `description`, and may have a `normalization` (`lowercase` or `uppercase`) so that `Work` and `work` are one value.
-A function that works along a scope names the input carrying it, required unless it says `required: false`. At
-each call the platform checks that input's value against the policy before the program is called.
+A function that works along a scope names, in `from_input`, the input carrying it: a declared scope, and one of the
+function's `inputs` properties. At each call the platform checks that input's value against the policy before the
+program is called: a policy narrowed to some values of a scope applies only when the call's value is one of them, so a
+call that leaves the input empty matches none of them. A binding may say `required: false`; nothing acts on it yet.
 
 ```yaml
 authorization:
@@ -143,7 +158,7 @@ agent:
   description: See what an agent can reach from where it runs.
   instructions: Use this agent when the person wants to see whether agents are held to the hosts they declared.
   examples:
-    - {title: Check this install, prompt: "Run the connection check and tell me what was reached."}
+    - {title: Check this install, prompt: "Run the connection check and tell me what was reached and what was refused."}
 network:
   hosts: [example.com]
 functions:
@@ -166,19 +181,20 @@ The runtime offers a program these functions. A program calls them as it calls a
 
 | Function | Inputs | Output | Level |
 |---|---|---|---|
-| `record.list` | `resource`, `filters`, `after` | a page of the records, without secret values or file bytes | 0 |
-| `record.read` | `resource`, `ref` | the record; its file written into the home and named in `files` | 0; 2 when it returns secret values |
-| `record.create` | `resource`, `fields`; a file in `files` | the new record's `ref` | 1 |
-| `record.update` | `resource`, `ref`, `fields`; a file in `files` | the record's `ref` | 1 |
+| `record.list` | `resource`, `filters`, `after`, `limit` | a page of the records, without secret values or file bytes | 0 |
+| `record.read` | `resource`, `ref` | the record; its file written into the home and named in `files` | 0; 2 for a secret's |
+| `record.create` | `resource`, `fields`; for a file resource, the file in `files` | the new record's `ref` | 1 |
+| `record.update` | `resource`, `ref`, `fields` | the record's `ref` | 1 |
 | `record.delete` | `resource`, `ref` | `deleted` | 2 |
 | `model` | `messages`, `max_tokens`; pictures in `files` | `text`, `stop` | 0 |
 | `chat` | `text`; a `table` or `chart`; `choices`; `expects`: `nothing`, `text`, `choice` or `file` | the answer, or `null` | 0 |
-| `network.open` | `hosts`, and why: the code and its purpose | the hosts, open for this call | 3 |
+| `network.open` | `hosts`, and why: the code and its purpose | the hosts, open for this call | 3: always asked, on a card of its own |
 
 **One gate for every call,** the model's to an agent and an agent's to the runtime:
 
 1. The function declares it in `calls`, naming the resource:
-   `calls: [model, chat, "record.read:logins", "record.create:logins"]`. Anything else is refused.
+   `calls: [model, chat, "record.read:logins", "record.create:logins"]`. Anything else is refused. A `record.*`
+   entry names a resource the manifest declares.
 2. The organization allows it, denies it, or asks, for any agent, function and resource: by who may use the agent,
    kept with it for each group, and by its policies ([api-server](api-server.md#5-agents)). A deny wins.
 3. A level above the chat's trust waits for a human's approval. An approval may be remembered for that agent,
@@ -191,7 +207,8 @@ The runtime offers a program these functions. A program calls them as it calls a
 - **`chat` with `expects`** waits for the answer, and the function's clock stops meanwhile. Whoever started the
   call, a schedule or a webhook too, the human is asked and told. Unanswered within the runtime's ask hours (24 by
   default), the call fails, and the card stays open.
-- **`network.open`** shows the human the code, its purpose and the hosts. A yes opens those hosts for that call.
+- **`network.open`** shows the human the code, its purpose and the hosts, whatever the chat's trust. A yes opens
+  those hosts for that call; a no ends the call with `refused`.
 
 ## 7. Resources
 
@@ -204,20 +221,28 @@ resources:
   files: [...]     # files it keeps
 ```
 
-Every resource has an `id`, unique across the three, a `label`, a `description`, and a `binding`:
-`{cardinality: one | many, required: true | false}`. It may say what a human may do on it directly, with no
-agent in the loop (`user_access`). Secrets and data declare their `fields`:
+Each kind holds at most 50. Every resource has an `id`, unique across the three, and a `label` (at most 200
+characters); it may have a `description` and a `binding`: `{cardinality: one | many, required: true | false}`. A
+resource of `cardinality: one` lets a call leave `ref` out. Data may say what a human may do on it directly, with no
+agent in the loop (`user_access`: `create`, `update`); without it, only its agent writes it. Data declare their
+`fields`, and secrets may; at most 50:
 
 | Key | Is |
 |---|---|
-| `name`, `label` | the field's name, and what people see |
+| `name`, `label` | the field's name, an id; and what people see |
 | `type` | `string`, `number`, `select`, `object`, `secret`; and for a secret, `form` |
-| `storage` | `keys`: plain, filtered on, single values only; `values`: encrypted |
-| `required`, `options` | whether it must be given; a `select`'s choices |
+| `storage` | `keys`: plain, filtered on, single values only; `values` (the default): encrypted. A `secret`, `form` or `object` field is `values` |
+| `required`, `options` | whether it must be given; a `select`'s choices, at most 100, each at most 100 characters |
+
+A `string` or `secret` value is at most 20,000 characters.
 
 - **A secret** is typed, its fields filled in by a human, or connected: with `oauth`, the platform runs the
-  consent and refreshes the tokens.
-- **A file resource** may hold its files to `constraints`: `mime_types`, `max_size_mb`.
+  consent and refreshes the tokens. `oauth` names `provider`, `authorize_url` and `token_url` (both `https://`), and
+  may add `scopes`, `authorize_params`, `scope_param`, `scope_separator` (a space or `,`), `token_auth` (`body` or
+  `basic`), `token_format` (`form` or `json`), `token_path`, and `identity` (`{url, field, method, headers, source}`,
+  where the account's name is read).
+- **A file resource** may hold its files to `constraints`: `mime_types` (such as `application/pdf` or `image/*`),
+  `max_size_mb` (1 to 1024). Its `user_access` may be `create`.
 - **A `form` field** is for a sign-in that can't be known ahead: a site's. When the agent creates or updates the
   record, it names what the site's form asks, each `text` or `secret`, and whether it is remembered. The human
   fills them in.
@@ -252,37 +277,39 @@ each connection:
    flight, and not one the organization's policy blocks.
 2. **The address must be public.** The way out looks the name up itself and connects only to a public address:
    never the platform's own network, this machine, or the cloud's metadata address.
-3. **It connects to the address it checked,** and passes the bytes through unread: a tunnel (`CONNECT`), or a
-   plain web request (`http://`), forwarded.
+3. **It connects to the address it checked,** and passes the bytes through unread: a tunnel (HTTP `CONNECT`, or
+   SOCKS5's), or a plain web request (`http://`), forwarded.
 
-A refusal is answered at once, `403` with the reason in its first line, so the program can say why. A process has
-a way out only if its manifest declares a host or one of its functions calls `network.open`.
+A refusal is answered at once: over HTTP, `403` with the reason in its first line, so the program can say why; over
+SOCKS5, its "not allowed" reply. A process has a way out only if its manifest declares a host or one of its functions
+calls `network.open`.
 
-**The manifest's `network`:**
+**The manifest's `network`:** `hosts`, at most 50 entries, names lowercase.
 
 | `hosts` entry | Reaches |
 |---|---|
-| `example.com` | that host, on the web's ports |
-| `*.example.com` | every host under that name |
+| `example.com` | that host, on the web's ports (80 and 443) |
+| `*.example.com` | every host under that name, not `example.com` itself |
 | `example.com:993` | that host on that port only |
-| `{from_secret: mailbox.server}` | the host written in that field of the secret, once the secret is handed to the agent |
+| `{from_secret: mailbox.server}` | the host written in that `keys` field of that secret, once the agent has read the secret in the chat; on the web's ports, unless the value names one (`imap.example.com:993`). Only a host name or address counts, never a pattern, and only the person fills that field: an agent's `record.create` or `record.update` that writes it is refused |
 | `any` | any public address, on any port |
 | `[]` | nothing |
 
-- **Hosts opened by `network.open`** close when the call ends.
+- **Hosts opened by `network.open`** close when the call ends, and so do the connections they carried.
 - **The hosts each process reached** are kept with its chat, not with each call: for each host and port, the
   connections allowed and refused and the bytes each way, never their content. The chat's person sees them when they
   inspect it ([runtime](runtime.md#7-the-proxy); [api-server](api-server.md#7-chats)).
 
 | Variable | Is | Default |
 |---|---|---|
-| `AI_RUNTIME_WAY_OUT_PORT` | where sandboxes bring processes' connections | `8005` |
+| `AI_RUNTIME_PROXY_PORT` | where sandboxes bring processes' connections | `8005` |
 | `AI_RUNTIME_AGENT_CONNECTIONS_MAX` | how many connections one process may have open | `128` |
 
 ## 9. The standard, field by field
 
 There is no SDK. An agent is a program, in any language, that reads and writes these messages, and this section is
-all it needs. A field not listed here is refused.
+all it needs. Beside `_id`, `body` and `files`, a field ends the process; within `data`, a field not listed here is
+never acted on, and in `ready` makes it differ from the manifest.
 
 Every message ([sandbox](sandbox.md#5-the-program-protocol)):
 
@@ -330,7 +357,7 @@ message carries files.
 | Field | Is |
 |---|---|
 | `call` | the call's `_id`; left out when the program itself failed |
-| `code` | from the runtime, one of: `refused` (not declared, denied by policy, or declined by the human), `not_found`, `invalid` (the inputs), `cancelled`, `failed` (the platform failed; trying again may help). From a program, any word or none |
+| `code` | from the runtime, one of: `refused` (not declared, denied by policy, or declined by the human), `not_found`, `invalid` (the inputs), `cancelled`, `failed` (the platform failed; trying again may help). From a program, any word, or none for `failed` |
 | `message` | what went wrong, in words, at most 1,000 characters |
 
 **`cancel`**, either way:
@@ -356,11 +383,11 @@ message carries files.
 
 ### Files
 
-- **Into a call.** A file handed to a call is written into the program's home, and stands in `inputs` as its path;
-  the message's `files` names it.
+- **Into a call.** A file handed to a call is written into the program's home at `in/<ref>/<name>`, and stands in
+  `inputs` as that path; the message's `files` names it.
 - **Out of a call.** A file the program returns is written into its home, named in the message's `files`, and
   stands in `output` as its path. The runtime keeps it as one of the chat's files, and puts its ref in place of the
-  path.
+  path. A file is at most 8 MiB less 64 KiB; a larger one fails the call as `invalid`.
 - **To the runtime's functions,** the same: a file is a path in the home, named in the message's `files`.
 
 ### The runtime's functions
@@ -370,9 +397,9 @@ message carries files.
 | Input | Is |
 |---|---|
 | `resource` | a resource id of the manifest |
-| `filters` | optional: `{field: value}`, on `keys` fields only |
+| `filters` | optional: `{field: value}`, on `keys` fields only, each value a text, a number or `true`/`false` |
 | `after` | optional: the `next` of the page before |
-| `limit` | optional: at most 100, the default |
+| `limit` | optional: 1 to 100; 100 by default |
 
 Output: `{"records": [...], "next": ref}`, oldest first. Each is `{ref, fields}` with its `keys` fields only; a
 file's is `{ref, name, type, size}`. `next` is `null` on the last page.
@@ -384,8 +411,9 @@ file's is `{ref, name, type, size}`. `next` is `null` on the last page.
 | `resource` | a resource id |
 | `ref` | the record's; left out for a resource bound to one record |
 
-Output: `{ref, fields}`, every field, secret values included. A file's is `{ref, name, type, size, path}`, its
-bytes written to `path` and named in `files`.
+Output: `{ref, fields}`, every field, secret values included; a connected account's, a fresh access token, never its
+refresh token. A file's is `{ref, name, type, size, path}`, its bytes written to `path` (`in/<ref>/<name>`) and named
+in `files`.
 
 `record.create`
 
@@ -393,7 +421,9 @@ bytes written to `path` and named in `files`.
 |---|---|
 | `resource` | a resource id |
 | `fields` | for secrets and data: `{field: value}`. A secret field left out or `null` is asked of the human. A `form` field's value is `{name: {type: text \| secret, remember: true \| false, value}}`; each name without a `value` is asked of the human |
-| `name`, `path` | for files: the file's name, and its path in the home, named in `files` |
+
+For a file resource, the record is the first file the message's `files` names, kept under its name in the home;
+`fields` is not read.
 
 Output: `{ref}`; with `once`, `{question: value}`, the answers the human gave to a form's questions not remembered.
 
@@ -418,9 +448,11 @@ Output: `{deleted: true}`.
 
 | Input | Is |
 |---|---|
-| `messages` | `[{role: system \| user \| assistant, text}]` |
+| `messages` | `[{role: system \| user \| assistant, text}]`, at least one that isn't `system`. The `system` ones together are the instructions |
 | `max_tokens` | optional: the most the reply may be |
-| `pictures` | optional: paths of pictures in the home, named in `files`, shown with the last message; each a PNG, JPEG, GIF or WebP by its bytes, of at most 5 MiB, at most 16 |
+
+Pictures are the files the message's `files` names, shown with the last message: the first 16, each a PNG, JPEG,
+GIF or WebP by its name and its bytes, of at most 5 MiB.
 
 Output: `{text, stop}`; `stop` is `end`, or `length` when `max_tokens` cut the reply.
 
@@ -434,19 +466,19 @@ Output: `{text, stop}`; `stop` is `end`, or `length` when `max_tokens` cut the r
 | `choices` | optional: at most 8, each at most 100 characters |
 | `expects` | `nothing` (the default), `text`, `choice` or `file` |
 
-Output: `{answer}`: the words, the choice, or for a file its path in the home, named in `files`. `null` when the
-human declined. Unanswered within the runtime's ask hours, the call fails. A call may make at most 5 `chat` calls
-that expect nothing.
+Output: `{answer}`: the words, the choice, or for a file its path in the home (`in/<ref>/<name>`), named in `files`.
+`null` when the human declined, and always when it expects nothing. Unanswered within the runtime's ask hours, the
+call fails. A call may make at most 5 `chat` calls that expect nothing; a sixth is `refused`.
 
 `network.open`
 
 | Input | Is |
 |---|---|
-| `hosts` | each a name, or `name:port` |
-| `purpose` | what it is for, in words |
+| `hosts` | each a name, `*.name`, or either with `:port`; at most 20, more are dropped |
+| `purpose` | what it is for, in words, at most 1,000 characters |
 | `code` | optional: `{language, text}`, the code that needs them |
 
-Output: `{hosts}`, open until the call it was made within ends.
+Output: `{hosts}`, lowercase, open until the call it was made within ends.
 
 ### A whole exchange
 
@@ -482,27 +514,33 @@ A publisher offers agents through a catalog: one JSON document at an address the
 
 | Key | Is |
 |---|---|
-| `catalog.id`, `catalog.name` | the catalog's id: lowercase letters, digits and `_`; and its name |
+| `schema` | `3` |
+| `catalog.id`, `catalog.name` | the catalog's id, an id as in [5](#5-the-manifest); and its name, at most 200 characters |
 | `manifest` | the agent's manifest, whole ([5](#5-the-manifest)) |
-| `programs` | the program for each machine: the zip the sandbox runs ([sandbox](sandbox.md#2-what-a-program-is)), built however the publisher likes |
-| `base` | optional: the sandbox base the program relies on. Left out, it carries everything it needs, and runs on any base |
+| `programs` | the program for each machine, `x86_64` or `aarch64`, at least one: the zip the sandbox runs ([sandbox](sandbox.md#2-what-a-program-is)), built however the publisher likes |
+| `base` | optional: the sandbox base the program relies on, such as `python-3.12`. Left out, it carries everything it needs, and runs on any base |
 | `samples` | optional: a zip holding `samples.yaml` and the files it names: records and files of the resources the manifest declares, to try the agent with. They load as the human's own, and are removed in one step |
 | `readme` | optional: text for whoever reviews it |
-| a file | `url`, relative to the catalog's address or whole; `digest`, `sha256:` and the hash of its bytes; `size` |
+| a file | `url`, relative to the catalog's address or whole; `digest`, `sha256:` and the lowercase hex hash of its bytes; `size`, in bytes |
+
+A catalog is read whole even when an entry's manifest fails its checks: that entry is shown with its errors, and
+can't be installed.
 
 **How an agent reaches a deployment:**
 
 1. **An administrator saves the catalog's address as a source,** with a credential if it is private: a token, or
    a header and value. The credential goes only to the source's own host. The API server reads the catalog and
    keeps it as a snapshot. Nothing runs.
-2. **A human reviews one agent and installs that version.** Its files are downloaded, each checked against its
-   digest and size, and stored. From then on the deployment never needs the publisher's server.
+2. **A human reviews one agent and installs that version,** from the catalog as they reviewed it: a catalog that
+   changed since must be reviewed again. Its files are downloaded, each checked against its digest and size, and
+   stored. From then on the deployment never needs the publisher's server. An agent's id comes from one source: the
+   same id offered by another is refused.
 3. **A runtime starts it once, with no network,** and waits for a `ready` that matches the manifest.
 4. **Chats call it,** on sandboxes of its machine and its base.
 
-**A version never changes.** A different manifest or program under the same version is refused. An update is a
-new version in the catalog: reading the source again offers it, a human reviews and installs it, and the agent
-keeps its records and who may use it.
+**A version never changes.** A different manifest, program, base or samples under the same version is refused, after
+an uninstall too. An update is a new version in the catalog: reading the source again offers it, a human reviews and
+installs it, and the agent keeps its records and who may use it.
 
 | Limit | |
 |---|---|
@@ -531,8 +569,10 @@ files:
   zip, at most 2 MiB.
 - `ref` names a row (lowercase letters, digits and `_`, at most 40); a field's value `"@ref"` is the id that row was
   given.
-- At most 200 rows; the zip at most 64 MiB unpacked and 1,000 entries. Each row is checked against the manifest as
-  the platform checks a record.
+- `files` rows load first, then `records`, in order: `"@ref"` names a row before it.
+- At most 200 rows; the zip at most 64 MiB unpacked and 1,000 entries. Each row of `records` is checked against the
+  manifest as the platform checks a record, its required fields included. A person loads an agent's samples once,
+  until they remove them.
 
 ## 11. Writing a good agent
 

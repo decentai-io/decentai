@@ -110,7 +110,9 @@ class Caller:
 
     async def _tell(self, state: dict[str, Any]) -> None:
         try:
-            answer = await self.sandbox.node.call(self.address, "Caller:Sandbox:state", state, id=self.id)
+            # a caller is a runtime: until its id is known, TLS checks the kind, and then that id
+            reached = {"id": self.id} if self.id else {"kind": "runtime"}
+            answer = await self.sandbox.node.call(self.address, "Caller:Sandbox:state", state, **reached)
         except Exception as error:
             log.debug(f"{self.address} did not take the state: {error}")
             return

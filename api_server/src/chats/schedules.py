@@ -110,10 +110,36 @@ class ScheduleEndpoints(Controller):
             raise ValueError("trust is 0, 1, 2 or 3.")
         return value
 
-    @endpoint("See your schedules, paused ones too; one chat's, where it is named", changes=False)
+    @endpoint("See your schedules, paused ones too, a page at a time: the next to run first; searched, by how they "
+              "stand, one chat's where it is named", changes=False)
     def list(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
-        query = {"user_id": caller.user_id, **({"chat_id": str(data["chat_id"])} if data.get("chat_id") else {})}
-        return {"schedules": [Schedules.public(r) for r in Schedules().col.find(query).sort("next_at", 1).limit(500)]}
+        schedules, mine = Schedules(), {"user_id": caller.user_id}
+        state = str(data.get("state") or "")
+        if state and state not in Schedules.STATES:
+            raise ValueError(f"A state is {', '.join(Schedules.STATES)}.")
+        text = Schedules.matching(data.get("q"), "what.prompt", "what.function")
+        if text:  # or in a chat of that title
+            titled = Chats().col.find({**mine, **Chats.matching(data["q"], "title")}, {"_id": 1}).limit(1000)
+            text["$or"].append({"chat_id": {"$in": [chat["_id"] for chat in titled]}})
+        query = Schedules.every(mine, {"chat_id": str(data["chat_id"])} if data.get("chat_id") else {},
+                                Schedules.STATES.get(state, {}), text)
+        found, after = schedules.listed(query, data.get("after"), data.get("limit"))
+        by_chat = {row["_id"]: row["count"] for row in schedules.col.aggregate([
+            {"$match": mine}, {"$group": {"_id": "$chat_id", "count": {"$sum": 1}}}])}
+        titles = {chat["_id"]: chat["title"] for chat in Chats().col.find({"_id": {"$in": list(by_chat)}}, {"title": 1})}
+        upcoming = schedules.col.find_one({**mine, **Schedules.RUNS_NEXT}, sort=[("next_at", Schedules.ASC)])
+        return {"schedules": [Schedules.public(r) for r in found], "next": after,
+                "total": schedules.col.count_documents(query),
+                "counts": {"all": schedules.col.count_documents(mine),
+                           **{name: schedules.col.count_documents({**mine, **where})
+                              for name, where in Schedules.STATES.items()}},
+                "chats": [{"chat_id": chat_id, "title": titles.get(chat_id, ""), "count": count}
+                          for chat_id, count in by_chat.items()],
+                "upcoming": Schedules.public(upcoming) if upcoming else None}
+
+    @endpoint("See one schedule of yours", changes=False)
+    def get(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
+        return {"schedule": Schedules.public(self._mine(data, caller))}
 
     @endpoint("See the functions a chat can schedule", changes=False)
     def functions(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:

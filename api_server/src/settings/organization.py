@@ -61,9 +61,18 @@ class OrgSettingsEndpoints(Controller):
     def get(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
         return {"settings": OrgSettings().of(caller.org_id)}
 
+    @staticmethod
+    def _own_connections(changes: dict[str, Any], org_id: str) -> None:
+        """A model connection named in the settings is one of this organization's."""
+        from .models import Models  # models reads these settings: imported here, not at the top, to break the cycle
+        for name in ("model", "speech_connection"):
+            if changes.get(name) and Models().col.find_one({"_id": changes[name], "org_id": org_id}) is None:
+                raise ValueError(f"{name} names no model connection of this organization.")
+
     @endpoint("Change the organization's settings")
     async def update(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
         changes = OrgSettings().checked(data.get("settings") if isinstance(data.get("settings"), dict) else {})
+        await asyncio.to_thread(self._own_connections, changes, caller.org_id)
         await asyncio.to_thread(Organizations().col.update_one, {"_id": caller.org_id},
                                 {"$set": {f"settings.{name}": value for name, value in changes.items()}})
         await RuntimeCalls().changed({"org_id": caller.org_id})

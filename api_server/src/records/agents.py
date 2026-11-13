@@ -102,12 +102,12 @@ class AgentRecordEndpoints(Controller):
             if not isinstance(value, (str, int, float, bool)) or "$" in name or "." in name:
                 raise Refused("invalid", "A filter matches a keys field's text, number or true/false.")
             query[f"keys.{name}"] = value
-        found = Records().page(query, data.get("after"), data.get("limit"))
+        found, after = Records().paged(query, data.get("after"), data.get("limit"))
         RecordUses().count(caller.chat, agent["agent_id"], resource, None, "list")
         return {"records": [{"ref": r["_id"], **({"name": r["file"]["name"], "type": r["file"]["type"],
                                                  "size": r["file"]["size"]} if r.get("file") else {"fields": r["keys"]})}
                             for r in found],
-                "next": found[-1]["_id"] if len(found) == Records.size(data.get("limit")) else None}
+                "next": after}
 
     @endpoint("record.read", by=CHAT, changes=False)
     async def read(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
@@ -136,6 +136,7 @@ class AgentRecordEndpoints(Controller):
             record = Records().change(record, of=of, agents=[of])
             RecordUses().count(caller.chat, agent["agent_id"], resource, record, "create")
             return {"ref": record["_id"]}
+        self._hosts_untouched(agent, resource, data.get("fields") or {})
         keys, values, empty = Fields.split(resource, data.get("fields") or {}, whole=False)
         record = Records().create(caller.person, resource["kind"], keys, values, of)
         RecordUses().count(caller.chat, agent["agent_id"], resource, record, "create")
@@ -146,6 +147,12 @@ class AgentRecordEndpoints(Controller):
         agent, resource = Gate().check(caller, data, "update", LEVEL["update"])
         record = self._record(caller, data, resource)
         given = data.get("fields") or {}
+        self._hosts_untouched(agent, resource, given)
+        owner = record.get("of") or {}
+        if owner.get("agent") and owner["agent"] != agent["agent_id"]:  # another agent's record, shared with this one
+            maker = Agents().installed(caller.org_id, owner["agent"])
+            if maker is not None:
+                self._hosts_untouched(maker, {"id": owner.get("resource")}, given)
         keys, values, empty = Fields.split(resource, {k: v for k, v in given.items() if v is not None}, whole=False)
         empty = [name for name in empty if name in given]
         record = Records().change(record, keys={**record["keys"], **keys}, values={**Records().opened(record), **values})
@@ -159,6 +166,18 @@ class AgentRecordEndpoints(Controller):
         Records().col.delete_one({"_id": record["_id"]})
         RecordUses().count(caller.chat, agent["agent_id"], resource, record, "delete")
         return {"deleted": True}
+
+    @staticmethod
+    def _hosts_untouched(agent: dict[str, Any], resource: dict[str, Any], given: Any) -> None:
+        """A field the agent's manifest reads a host from (``from_secret``) is its person's to fill in: an agent that
+        wrote it could reach any host it named."""
+        named = {host["from_secret"].split(".", 1)[1] for host in (agent["manifest"].get("network") or {}).get("hosts")
+                 or [] if isinstance(host, dict) and host["from_secret"].split(".", 1)[0] == resource["id"]}
+        written = [name for name, value in (given if isinstance(given, dict) else {}).items()
+                   if name in named and value not in (None, "")]
+        if written:
+            raise Refused("refused", f"{', '.join(sorted(written))} names a host this agent may reach: its person fills "
+                                     f"it in, never the agent.")
 
     @staticmethod
     def _asked(caller: Caller, data: dict[str, Any], record: dict[str, Any], resource: dict[str, Any],

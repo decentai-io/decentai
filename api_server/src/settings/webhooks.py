@@ -15,7 +15,7 @@ from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError
 from pymongo.errors import DuplicateKeyError
 
-from ..chats.store import Chats, Events, Messages
+from ..chats.store import Cards, Chats, Events, Messages, Schedules
 from ..doors.calls import Caller, Controller, Refused, endpoint
 from ..doors.limits import Limits
 from ..people.permissions import Bounds
@@ -29,7 +29,8 @@ from .organization import OrgSettings
 
 class Webhooks(Store):
     COLLECTION = "webhooks"
-    INDEXES = (([("user_id", Store.ASC)], {}),)
+    INDEXES = (([("user_id", Store.ASC)], {}), ([("viewers.users", Store.ASC), ("_id", Store.ASC)], {}),
+               ([("viewers.groups", Store.ASC), ("_id", Store.ASC)], {}), ([("handing.to", Store.ASC)], {}))
     PER_PERSON, PER_MINUTE, WINDOW, BODY = 25, 60, 300, 64 * 1024
 
     def secret(self, hook: dict[str, Any]) -> str:
@@ -184,17 +185,25 @@ class WebhookEndpoints(Controller):
     def _names(hooks: list[dict[str, Any]]) -> dict[str, str]:
         return {p["_id"]: p["name"] for p in Users().col.find({"_id": {"$in": [h["user_id"] for h in hooks]}}, {"name": 1})}
 
-    @endpoint("See your webhooks, those shared with you, and those handed to you", changes=False)
+    @endpoint("See your webhooks, those handed to you, and a page of those shared with you, searched", changes=False)
     def list(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
-        groups = [g["_id"] for g in Groups().of(caller.person)]
-        shared = list(Webhooks().col.find({"user_id": {"$ne": caller.user_id}, "$or": [
-            {"viewers.users": caller.user_id}, {"viewers.groups": {"$in": groups}}]}))
-        handed = list(Webhooks().col.find({"handing.to": caller.user_id}))
+        """A person's own are at most PER_PERSON, and come whole with every page, as those handed to them do; those
+        shared with them come a page at a time."""
+        groups, hooks, me = [g["_id"] for g in Groups().of(caller.person)], Webhooks(), caller.user_id
+        text = Webhooks.matching(data.get("q"), "name", "instruction")
+        sharing = {"user_id": {"$ne": me}, "$or": [{"viewers.users": me}, {"viewers.groups": {"$in": groups}}]}
+        shared, after = hooks.paged(Webhooks.every(sharing, text), data.get("after"), data.get("limit"))
+        handed = list(hooks.col.find({"handing.to": me}))
         names = self._names(shared + handed)
-        return {"webhooks": [self._public(h) for h in Webhooks().col.find({"user_id": caller.user_id})],
-                "shared": [self._public(h, False, names) for h in shared],
+        return {"webhooks": [self._public(h) for h in hooks.col.find(Webhooks.every({"user_id": me}, text)).sort("_id", 1)],
+                "shared": [self._public(h, False, names) for h in shared], "next": after,
+                "total": hooks.col.count_documents(Webhooks.every(sharing, text)),
                 "handed": [self._public(h, False, names) | {"role": "handed"} for h in handed],
-                "limit": Webhooks.PER_PERSON}
+                "limit": Webhooks.PER_PERSON,
+                "counts": {"webhooks": hooks.col.count_documents({"user_id": me}),
+                           "on": hooks.col.count_documents({"user_id": me, "enabled": {"$ne": False}}),
+                           "signed": hooks.col.count_documents({"user_id": me, "require_signature": True}),
+                           "shared": hooks.col.count_documents(sharing), "handed": len(handed)}}
 
     @endpoint("See one webhook", changes=False)
     def get(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
@@ -267,6 +276,9 @@ class WebhookEndpoints(Controller):
             raise Refused("not_found", "No webhook is handed to you by that id.")
         if data.get("accept") is True:
             Chats().col.update_one({"_id": hook["chat_id"]}, {"$set": {"user_id": caller.user_id, "holder": ""}})
+            # what the chat waits on and runs is its new person's: the one who handed it on answers and changes none
+            for store in (Cards(), Schedules()):
+                store.col.update_many({"chat_id": hook["chat_id"]}, {"$set": {"user_id": caller.user_id}})
             Webhooks().col.update_one({"_id": hook["_id"]}, {"$set": {"user_id": caller.user_id, "handing": None}})
         else:
             Webhooks().col.update_one({"_id": hook["_id"]}, {"$set": {"handing": None}})

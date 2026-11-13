@@ -20,9 +20,10 @@ Nothing between two nodes may end their TLS: a proxy in front of port 8004 passe
 - **Its port** serves `GET /health`, answered `{"status": "ok"}` to anyone, and `POST /app`, which takes
   `{"endpoint": "Domain:Controller:action", "data": {…}}` as msgpack or JSON and answers in the same form. An
   endpoint is matched ignoring case; an action starting with `_` is no endpoint.
-- **A body** is at most 1 MiB unless the node says otherwise; a call takes at most 30 seconds unless the caller says
-  otherwise.
-- **A refusal** is `{"title", "type": "error", "messages": [{"description"}]}`, with 400, 403, 404, 413 or 500.
+- **A body** is at most 1 MiB unless the node says otherwise, the call and its answer alike; a call takes at most 30
+  seconds unless the caller says otherwise.
+- **A refusal** is `{"title", "type": "error", "messages": [{"description"}]}`, with 400, 401, 403, 404, 413 or 500;
+  an endpoint may answer other statuses of its own.
 - **Who may call** is the node's own rule, asked first with the caller's certificate and the endpoint; `peer` is
   nothing when no certificate was shown. A node that serves only certified callers refuses one with none (401) before
   reading its body.
@@ -30,7 +31,7 @@ Nothing between two nodes may end their TLS: a proxy in front of port 8004 passe
   open a raw TLS stream to another, as the sandbox does to its caller's way out.
 - **TLS:** the server asks for a client certificate and takes a call without one only where the node's rule allows;
   it gives no session tickets. The identity folder is read again every minute, so a renewed certificate is used with
-  no restart; the roots are read once, at start.
+  no restart; the roots callers are checked against are read once, at start.
 
 ## 3. Certificates
 
@@ -107,16 +108,17 @@ It keeps token hashes and the nodes it certified in a database of its own, `dece
 |---|---|---|
 | `ISSUER_IDENTITY` | its identity folder | `/run/decentai` |
 | `ISSUER_AUTHORITY` | where its intermediate is kept | `/run/decentai/authority` |
-| `MONGO_URI`, `ISSUER_DATABASE` | its database; a password still `change-me` is refused | none, `decentai_issuer` |
-| `ISSUER_KEY_PASSPHRASE` | what encrypts its intermediate's key on disk; it doesn't start without one. A key written without one is encrypted when first read | none |
+| `MONGO_URI`, `ISSUER_DATABASE` | its database; a password still `change-me` is refused | `mongodb://localhost:27017`, `decentai_issuer` |
+| `ISSUER_KEY_PASSPHRASE` | what encrypts its intermediate's key on disk; it doesn't start without one, or with `change-me`. A key written without one is encrypted when first read | none |
 | `ISSUER_PORT` | its port | `8004` |
 | `ISSUER_LIFETIME` | a certificate's seconds, when a token says none | `43200` |
-| `ISSUER_LAUNCH_RULES` | which kinds may launch which ([7](#7-launching)) | the runtime launches sandboxes |
+| `ISSUER_LAUNCH_RULES` | a JSON file of which kinds may launch which ([7](#7-launching)) | none: the runtime launches sandboxes |
 | `LOG_LEVEL` | its log | `INFO` |
 
 - **Its first start:** it makes `authority.key` and `authority.csr`, logs that it waits for the root with the
   request's fingerprint, and looks for `authority.pem` every minute. Once there, it certifies itself, and serves.
-  Before that it answers 503.
+  Before that its port is closed. An intermediate that is no longer one to sign with leaves enrolling and renewing
+  answered 503.
 - **Its next intermediate:** 30 days before the current one ends it makes `authority.next.*`, to be signed the same
   way. The API server's admin tool asks for the request and installs the result
   (`python -m api_server.admin intermediate request | install --file`).
@@ -124,7 +126,8 @@ It keeps token hashes and the nodes it certified in a database of its own, `dece
   expiry (7 days unless said), with metadata such as a scope. Never for kind `issuer`. Only a hash is kept. A first
   token for a node Compose doesn't start: `python /opt/decentai/setup/identities.py token <kind>` in the issuer's
   container.
-- **What it answers:** enrolling and renewing to anyone; making, withdrawing and listing tokens, listing, refusing
+- **What it answers:** enrolling to anyone, with a certificate or none; renewing to any certified node; making,
+  withdrawing and listing tokens, listing, refusing
   and allowing nodes, and asking for and installing its intermediate, to nodes of kind `api`; a kind with a launch
   rule makes tokens for, and refuses, the nodes it launched. A node refused makes no tokens, and what its tokens
   would enroll is refused.

@@ -26,20 +26,23 @@ The assistant is what thinks in a chat: one for each chat a runtime holds ([runt
 | a stop | stops every thread and every piece of work; a thought in progress makes no calls |
 | a stop of one call or task | stops it, with everything under it, and tells its thread the person stopped it |
 | a card answered after its work stopped waiting | tells that work's thread, to run it again |
+| a new contract | reads the person's MCP tools again, at its next thought |
 
 **Trust is a run's.** The chat's thread and its tasks work at the chat's trust; a run and its tasks at its origin's: a
 schedule's own trust, the chat's when it was made, which its person may set on the schedules page, above the chat's
 too ([api-server](api-server.md#7-chats)); a webhook's chat's. The assistant never sets a trust.
 
 A message is taken once: the assistant keeps the numbers of the last 100 it took. Messages that arrive out of order
-are each taken. When a chat is placed, its messages not taken yet are taken.
+are each taken. When a chat is placed, its messages not taken yet are taken. Only a person's message and a webhook's
+are taken; a person's starts a new count of the turn budget ([3](#3-thinking)).
 
 ## 3. Thinking
 
 - **One thought at a time** in each thread. A thought is shown the instructions, the thread's view
   ([7](#7-its-history-and-what-the-model-is-shown)) and its tools. Its words are said in the chat (the chat's thread);
   its calls are made at once, together, each kept in the work log before any of them runs.
-- **Its words are sent as the model writes them,** twice a second; the message they end in replaces them.
+- **Its words are sent as the model writes them,** twice a second, in the chat's thread only; the message they end
+  in replaces them.
 - **Pictures:** of the newest 8 files a thread's history names, the person's and those agents returned, the pictures
   (PNG, JPEG, GIF or WebP, at most 5 MiB) are shown with their message or their call's answer. A model that refuses
   pictures is shown none from then on. A chat holds only its threads' newest; every chat on the runtime together, at
@@ -49,14 +52,17 @@ are each taken. When a chat is placed, its messages not taken yet are taken.
 - **The turn ends** when a thought makes no call and nothing new is waiting. A task or a run that is quiet is over.
 - **The turn budget:** at most the chat's `turn_budget` thoughts, 24 by default, for a turn's whole tree of threads,
   counted on its root. Past it the thread stops and says so; the person's next word starts a new count.
-- **A model that fails** ends the turn: the chat's thread says why. A request too long for the model's window is
-  folded ([7](#7-its-history-and-what-the-model-is-shown)) and asked once more.
+- **A model that fails** ends the turn: the chat's thread says why; a task reports it, a run says it in the chat. A
+  request too long for the model's window is folded ([7](#7-its-history-and-what-the-model-is-shown)) and asked
+  again; one with pictures the model refuses is asked again without them; three tries in all.
 
-**The instructions** are the platform's own, then the organization's `guardrail`, then the instructions of each agent
-whose functions are offered, then the person's memories and the names of their skills. A task and a run are told
-what they are. The time is stamped on each thing that comes in, so the instructions stay the same from thought to
-thought. Past 100 functions, `open` lists every agent in one line, and only the agents opened have their
-instructions shown.
+**The instructions** are the platform's own, then the organization's `guardrail`, then each agent whose functions
+are offered (its name, id, description and instructions), then the person's memories and the names and descriptions
+of their skills. A task and a run are told what they are. The platform's, the guardrail and, up to 100 functions, the
+agents' are the part a provider may cache. The time, in the chat's time zone, is stamped on what the person says and
+on what starts a run, so the instructions stay the same from thought to thought. Past 100 functions, `open` lists
+every agent in one line (its id, name and description), and only the agents a thread opened have their functions
+offered and their instructions shown: the newest opened first, at most 100 functions.
 
 ## 4. Its tools
 
@@ -66,25 +72,29 @@ instructions shown.
 | each MCP tool the person turned on | calls it through the gate by its level, named `mcp_server__tool` |
 | `task` | starts a task on a brief ([5](#5-tasks-and-runs)) |
 | `tell` | gives words to a task it started; from a task, to the one that started it |
-| `look` | its work: one entry, what it touched and how it ended; with `from`, its whole output, a page at a time, however old; a chapter; or where words were said |
-| `stop` | stops a call or a task, with everything under it |
-| `sleep` | waits up to 900 seconds; anything new wakes it early |
-| `ask` | asks the person, words or a choice, and waits however long they take |
-| `schedule` | runs a prompt, or an agent's schedulable function, later |
+| `look` | its work: with nothing, its last 40 entries and its chapters; with an id, one entry, its inputs, what it touched and how it ended; with `from`, its whole output from that character, 50,000 at a time, however old; `ch1`, `ch2`: a chapter; with `find`, where words were said |
+| `stop` | stops a call or a task it started, with everything under it |
+| `sleep` | waits 1 to 900 seconds; anything new wakes it early |
+| `ask` | asks the person, words or one of at most 8 choices, and waits however long they take |
+| `schedule` | runs a prompt, or an agent's schedulable function (`agent.function` and its inputs), later: on a cron line in the chat's time zone, every so many seconds (at least 60), or once at a time; with `wake`, a field of the function's output that, when set, starts a run |
 | `unschedule` | lists the chat's schedules, or cancels one |
 | `remember` | offers the person a memory to keep; they decide |
-| `skill` | reads one of the person's skills; or offers them a new one to save |
-| `open` | past 100 functions: an agent's functions become its tools |
+| `skill` | reads one of the person's skills by its name; or, with its text, offers them a new one to save |
+| `open` | past 100 functions: an agent's functions become its tools from its next thought on |
 
 - **Files** go into a call by their id, written where the function takes a file; the assistant hands the call each
-  file it names. Files an agent returns are the chat's, and go with the next thing said.
+  file it names, of the last 200 the chat has seen. Files an agent returns are the chat's, and go with the next thing
+  said.
 - **A tool's answer** is its output, or its error with its code; up to 16,000 characters are shown, the rest read with
-  `look`.
+  `look`. A call to no tool it has, or with inputs its own tool doesn't take, is answered *Not done* and why.
+- **`look`** in a task or a run sees only that thread's work; in the chat's thread, all of it. `stop` stops only what
+  its own thread started.
 
 ## 5. Tasks and runs
 
-- **A task** sees only its brief and what its own work answers. Its tools are the agents' functions, the MCP tools,
-  `look`, `stop`, `sleep`, `tell`, and `task` while it may nest: at most 2 deep. At most 4 tasks run at once. It
+- **A task** sees only its brief and what its own work answers, at its thread's origin and trust. Its tools are the
+  agents' functions, the MCP tools, `look`, `stop`, `sleep`, `tell`, `open` past 100 functions, and `task` while it
+  may nest: at most 2 deep. At most 4 tasks run at once in a chat; a fifth is answered *Not now*. It
   reports its last words when it is quiet: that is its entry's answer; one that fails reports why. It never speaks in
   the chat, and may give words to the one that started it.
 - **A run** starts from what its schedule or webhook brought, with every tool of the chat's thread. Its last words
@@ -101,9 +111,12 @@ Every call, task, question, schedule and offer is an entry, by id (`c12`, `t3`):
 | `thread`, `origin` | the thread that started it (none for a scheduled function, or one its person calls), and `person`, `schedule:<id>` or `webhook` |
 | `kind`, `title` | call, mcp, task, question, sleep, schedule, memory or skill; and what it is, as a person reads it |
 | `status` | running, waiting (for the person), done, failed, stopped, or unknown (a restart cut it) |
+| `means` | for a call, its agent and function; for an MCP call, its server and tool |
+| `why` | the thought's words, shown to the person beside what they approve: at most 1,000 characters |
+| `run` | the schedule's or webhook's run it belongs to, if any |
 | `card` | the card it waited on |
 | `inputs` | as given, or by ref past 16,000 characters |
-| `output` | its ref, its size and its first line: kept whole, apart, by its hash ([api-server](api-server.md#7-chats)) |
+| `output` | its ref, its size and its first 200 characters: kept whole, apart, by its hash ([api-server](api-server.md#7-chats)) |
 | `files`, `records` | the files it returned; the records its program created, read, changed or deleted |
 | `started`, `ended` | when |
 
@@ -122,13 +135,15 @@ still open belongs to a call that is gone, and expires.
 | `thought` | the model's words and calls, with its reasoning for that model |
 | `answer` | the answer to one of a thought's calls, with the files it returned |
 | `chapter` | a stretch of entries, and its summary |
+| `gone` | an entry of a chapter that keeps only its summary ([9](#9-its-state-and-limits)) |
 
 **The view** is the history as the model reads it: each thought followed by its calls' answers, and each chapter in
 place of what it holds. An answer shows at most 16,000 characters; `look` reads any output whole, 50,000 at a time.
 
 **Folding:** when the view passes 150,000 characters, the older half of what is not folded is summarized by the
-model and kept as a chapter. A chapter always ends where a thought begins, so no call is parted from its answer.
-Once 8 chapters show, everything is folded into one. `look ch2` shows a chapter as it was.
+model (a reply of at most 4,000 tokens, its usage recorded as a fold) and kept as a chapter. A chapter always ends
+where a thought begins, so no call is parted from its answer. Once 8 chapters show, the next one holds them all, with
+the older half of the rest. `look ch2` shows a chapter as it was, or only its summary once its entries are gone.
 
 ## 8. Asking the person
 
@@ -150,17 +165,24 @@ save sends only the parts that changed, and names those gone. A history only gro
 its last part.
 
 - **At most 4 MiB.** Past it, the oldest chapters keep only their summary, then the oldest ended work keeps only its
-  refs. Nothing is lost: every output is kept apart.
+  refs (its inputs and `why` let go). Nothing is lost: every output is kept apart.
 
 | Limit | |
 |---|---|
 | thoughts in a turn, its whole tree | the chat's `turn_budget`, 24 by default |
-| functions offered | 100 |
+| functions offered | 100; past it, those of the agents opened |
 | tasks deep, and running at once | 2, and 4 |
 | a view, before it is folded | 150,000 characters |
 | chapters shown | 8 |
 | an answer shown, and one look | 16,000 and 50,000 characters |
-| an output kept whole | 2 MiB of text |
+| an output kept whole | its first 2 MiB (2,097,152 characters) |
+| inputs kept in the log, past which by ref | 16,000 characters |
+| pictures shown | the newest 8 files of a thread, each at most 5 MiB; 256 MiB on a runtime, every chat together |
+| messages remembered as taken, files a call may be handed | 100, and 200 |
+| a sleep | 900 seconds |
+| a question, its choices | 4,000 characters; 8, each 100 characters |
+| a memory offered | 500 characters |
+| a program's ask within its call | `AI_RUNTIME_ASK_HOURS`, 24 |
 | its state | 4 MiB |
 
 ## 10. What the person sees
@@ -170,8 +192,8 @@ its last part.
 - **What it is doing,** as `doing` events that only pass: each thread's `thinking`, `folding`, or nothing (its work
   says the rest), with the turn's step and budget.
 - **Its work,** as the chat's events: `working` and `idle`, and `work` for each entry as it starts, waits, ends and has
-  its output kept: the whole entry but its inputs, cut, and the run it belongs to.
+  its output kept: the whole entry, its inputs cut to 600 characters, and the run it belongs to.
 - **Cards:** approvals of a step's calls, item by item; questions; memories and skills it offers. Every open card of
   every chat is in one place: *Waiting for you*.
-- **A run's** last words, posted in the chat with the run they come from; **a schedule's** run, ended with them, or
-  why it failed. Every message of its own says the model that wrote it.
+- **A run's** last words, posted in the chat with the run they come from; **a schedule's** run, ended with them (their
+  first 500 characters), or why it failed. Each message of the chat's thread's own words says the model that wrote it.

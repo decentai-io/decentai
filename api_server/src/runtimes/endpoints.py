@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from datetime import timedelta
 from typing import Any
 
@@ -50,14 +51,53 @@ class NodeEndpoints(Controller):
             raise Refused("not_found", "No such runtime.")
         return row
 
-    @endpoint("See the runtimes that serve the organization", changes=False)
+    def _filtered(self, data: dict[str, Any], caller: Caller, refused: list[str]) -> dict[str, Any]:
+        """By words, each in its name, id, note or a label; by how it stands; by whom it serves."""
+        silent = Runtimes.now() - timedelta(seconds=Runtimes.SILENT)
+        states = {"connected": {"seen_at": {"$gt": silent}, "_id": {"$nin": refused}},
+                  "away": {"seen_at": {"$lte": silent}, "_id": {"$nin": refused}}, "refused": {"_id": {"$in": refused}}}
+        scopes = {"shared": {"scope": ""}, "own": {"scope": caller.org_id}}
+        state, scope = str(data.get("state") or ""), str(data.get("scope") or "")
+        for name, given, known in (("state", state, states), ("scope", scope, scopes)):
+            if given and given not in known:
+                raise ValueError(f"A {name} is {' or '.join(known)}.")
+        words = [Runtimes.matching(word, "name", "_id", "note", "labels") for word in str(data.get("q") or "").split()[:10]]
+        return Runtimes.every({"scope": {"$in": self._scopes(caller)}}, states.get(state, {}), scopes.get(scope, {}),
+                              *words)
+
+    @endpoint("See the runtimes that serve the organization, a page at a time: searched, by how they stand and by "
+              "whom they serve", changes=False)
     def list(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
-        refused = Refusals().ids()
-        rows = list(Runtimes().col.find({"scope": {"$in": self._scopes(caller)}}))
+        refused, runtimes = sorted(Refusals().ids()), Runtimes()
+        query = self._filtered(data, caller, refused)
+        rows, after = runtimes.paged(query, data.get("after"), data.get("limit"))
         held = Chats().held(caller.org_id, [row["_id"] for row in rows])
-        return {"nodes": [{**Runtimes.public(row, caller.org_id), "live": Runtimes().is_live(row),
+        return {"nodes": [{**Runtimes.public(row, caller.org_id), "live": runtimes.is_live(row),
                            "refused": row["_id"] in refused, "held_chats": held.get(row["_id"], (0, 0))[0],
-                           "held_elsewhere": held.get(row["_id"], (0, 0))[1]} for row in rows]}
+                           "held_elsewhere": held.get(row["_id"], (0, 0))[1]} for row in rows],
+                "next": after, "total": runtimes.col.count_documents(query), "counts": self._counts(caller, refused)}
+
+    def _counts(self, caller: Caller, refused: list[str]) -> dict[str, int]:
+        """The runtimes in numbers, whatever is searched: of those connected, their sandboxes, those draining, and
+        the organization's chats they hold."""
+        counts = dict.fromkeys(("total", "connected", "refused", "sandboxes", "draining", "chats", "shared", "own",
+                                "own_connected"), 0)
+        connected = []
+        for row in Runtimes().col.find({"scope": {"$in": self._scopes(caller)}},
+                                       {"seen_at": 1, "scope": 1, "sandboxes.sandbox": 1, "drained": 1}):
+            counts["total"] += 1
+            counts["shared" if row.get("scope") == "" else "own"] += 1
+            if row["_id"] in refused:
+                counts["refused"] += 1
+            elif row["seen_at"] > Runtimes.now() - timedelta(seconds=Runtimes.SILENT):
+                connected.append(row["_id"])
+                counts["connected"] += 1
+                counts["own_connected"] += row.get("scope") != ""
+                sandboxes = [str(s.get("sandbox")) for s in row.get("sandboxes") or []]
+                counts["sandboxes"] += len(sandboxes)
+                counts["draining"] += sum(s in (row.get("drained") or []) for s in sandboxes)
+        counts["chats"] = sum(ours for ours, _ in Chats().held(caller.org_id, connected).values())
+        return counts
 
     @endpoint("Name a runtime, with a note")
     def update(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
@@ -112,12 +152,32 @@ class AuthorityEndpoints(Controller):
     def _scope(token: dict[str, Any]) -> str:
         return str((token.get("metadata") or {}).get("scope") or "")
 
-    @endpoint("See the enrollment tokens and what each enrolled", changes=False)
+    @staticmethod
+    def live(token: dict[str, Any]) -> bool:
+        """It may still enroll: not withdrawn, not expired, not used up."""
+        return not token.get("withdrawn") and (token.get("expires") is None or token["expires"] > time.time()) \
+            and (token.get("uses") is None or token["uses"] > 0)
+
+    @endpoint("See the enrollment tokens and what each enrolled, newest first, a page at a time: searched, those "
+              "that may still enroll or those spent", changes=False)
     async def list(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
+        """The issuer gives them all; they are cut into pages here, the cursor a token's id."""
+        state, words = str(data.get("state") or ""), str(data.get("q") or "").lower().split()
+        if state and state not in ("live", "spent"):
+            raise ValueError("A state is live or spent.")
         tokens = await self._tokens(caller)
-        made = {t["_id"] for t in tokens}
-        nodes = (await RuntimeCalls().issuer("Certificates:Node:list", {})).get("nodes") or []
-        return {"tokens": tokens, "nodes": [n for n in nodes if n.get("token") in made]}
+        found = [t for t in tokens if (not state or self.live(t) == (state == "live")) and all(
+            word in " ".join([t["_id"], str(t.get("kind")), *map(str, (t.get("metadata") or {}).get("labels") or [])])
+            .lower() for word in words)]
+        ids, size = [t["_id"] for t in found], Runtimes.size(data.get("limit"))
+        start = ids.index(data["after"]) + 1 if data.get("after") in ids else 0
+        page = found[start:start + size]
+        made = {t["_id"] for t in page}
+        nodes = (await RuntimeCalls().issuer("Certificates:Node:list", {})).get("nodes") or [] if page else []
+        live = sum(self.live(t) for t in tokens)
+        return {"tokens": page, "nodes": [n for n in nodes if n.get("token") in made],
+                "next": page[-1]["_id"] if start + size < len(found) else None, "total": len(found),
+                "counts": {"live": live, "spent": len(tokens) - live}}
 
     @endpoint("Make an enrollment token; it is shown once")
     async def create(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:

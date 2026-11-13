@@ -8,6 +8,7 @@ import base64
 import collections
 import itertools
 import posixpath
+import re
 import secrets
 from typing import Any
 
@@ -31,6 +32,8 @@ class Programs:
     #: What one call may say in the chat; pictures a model is shown, by their bytes, and the largest.
     SAID_MOST, PICTURES, PICTURE_MOST = 5, ("image/png", "image/jpeg", "image/gif", "image/webp"), 5 * 1024 * 1024
     WEB_PORTS = (80, 443)
+    #: A host a secret may name: a name of two labels or more, or an address, and a port; never a pattern.
+    HOST = re.compile(r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?::[0-9]{1,5})?")
 
     def __init__(self, chat: Any):
         self.chat = chat
@@ -187,8 +190,8 @@ class Programs:
         for host in (manifest.get("network") or {}).get("hosts") or []:
             if isinstance(host, dict) and host["from_secret"].startswith(f"{resource}."):
                 value = fields.get(host["from_secret"].split(".", 1)[1])
-                if isinstance(value, str) and value:
-                    self.revealed[agent_id].add(value.lower())
+                if isinstance(value, str) and self.HOST.fullmatch(value.strip().lower()):
+                    self.revealed[agent_id].add(value.strip().lower())
 
     @classmethod
     def matches(cls, pattern: str, host: str, port: int) -> bool:

@@ -27,14 +27,14 @@ kept. An agent may be written in any language: [the standard](documentation/agen
 | `issuer/` | certifies every other part; they call each other over HTTPS with mutual TLS on port 8004 |
 | `communication/` | how the parts talk: nodes, identities, enrolling |
 | `speech/` | speech to text and text to speech from models on the machine, in a container of its own |
-| `shared/` | what the API server and the runtime share: the rules, the model catalog, the MCP client, cron, file types |
+| `shared/` | what the API server and the runtime share: the rules, the model catalog, cron, file types; and the runtime's MCP client |
 | `tools/` | the root tool, for the deployment's offline root; what writes the model catalog; installing every published agent at once |
 | `deploy/` | the stack: Compose files, the settings, and setting it up on a computer |
-| `documentation/` | the design, part by part, and how to run it |
-| `paper/` | the white paper: the design as one argument |
+| `documentation/` | the design, part by part, and how to run it; and [the white paper](documentation/whitepaper/README.md), the design as one argument |
 
 The web client is a repository of its own, [`decentai-web-client`](https://github.com/decentai-io/decentai-web-client).
-The API server has no page, TLS or proxy of its own.
+The API server has no page or proxy of its own, and serves people in plain HTTP: on a server, the TLS is a proxy's in
+front of it.
 
 ## Start here
 
@@ -72,6 +72,7 @@ and yourself: you are its administrator.
 ```bash
 python deploy/setup/setup.py --link                         # the address and the code again
 docker compose --env-file deploy/config/deploy.env stop     # stop it; nothing is removed
+docker compose --env-file deploy/config/deploy.env start    # start it again
 ```
 
 ## Contributing, security, licence

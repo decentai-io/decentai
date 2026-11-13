@@ -18,12 +18,15 @@ from .organization import OrgSettings
 
 class Models(Store):
     COLLECTION = "models"
-    INDEXES = (([("org_id", Store.ASC)], {}),)
+    INDEXES = (([("org_id", Store.ASC), ("_id", Store.ASC)], {}), ([("org_id", Store.ASC), ("groups", Store.ASC)], {}))
 
     def usable(self, person: dict[str, Any]) -> list[dict[str, Any]]:
         """The connections shared with one of the person's groups."""
-        groups = [g["_id"] for g in Groups().of(person)]
-        return list(self.col.find({"org_id": person["org_id"], "groups": {"$in": groups}}))
+        return list(self.col.find(self.shared(person)))
+
+    @staticmethod
+    def shared(person: dict[str, Any]) -> dict[str, Any]:
+        return {"org_id": person["org_id"], "groups": {"$in": [g["_id"] for g in Groups().of(person)]}}
 
     def key(self, connection: dict[str, Any]) -> dict[str, Any]:
         return Cipher.open(connection.get("key", ""), f"{connection['org_id']}:model:{connection['_id']}")
@@ -64,12 +67,23 @@ class ModelEndpoints(Controller):
             changes["groups"] = groups
         return changes
 
-    @endpoint("See the model connections you may use", changes=False)
+    @endpoint("See the model connections you may use, a page at a time, searched", changes=False)
     def list(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
-        default = OrgSettings().of(caller.org_id)["model"]
+        """With ``all``, for whoever may make them, every connection of the organization."""
+        default, models = OrgSettings().of(caller.org_id)["model"], Models()
         admin = data.get("all") and Rules().allows(caller.person, "settings:llm:create") == "allow"
-        found = Models().col.find({"org_id": caller.org_id}) if admin else Models().usable(caller.person)
-        return {"connections": [Models.public(c, default) for c in found]}
+        mine = {"org_id": caller.org_id} if admin else Models.shared(caller.person)
+        query = Models.every(mine, Models.matching(data.get("q"), "name", "provider", "address", "models"))
+        found, after = models.paged(query, data.get("after"), data.get("limit"))
+        counted = next(models.col.aggregate([{"$match": mine}, {"$group": {
+            "_id": None, "connections": {"$sum": 1}, "models": {"$sum": {"$size": "$models"}},
+            "without_models": {"$sum": {"$cond": [{"$eq": [{"$size": "$models"}, 0]}, 1, 0]}}}}]), {})
+        named = models.col.find_one({**mine, "_id": default}, {"name": 1}) if default else None
+        return {"connections": [Models.public(c, default) for c in found], "next": after,
+                "total": models.col.count_documents(query),
+                "counts": {"connections": counted.get("connections", 0), "models": counted.get("models", 0),
+                           "without_models": counted.get("without_models", 0),
+                           "default_name": (named or {}).get("name", "")}}
 
     @endpoint("See the providers and the models each offers", changes=False)
     def providers(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:

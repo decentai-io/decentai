@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import logging
+import re
 import secrets
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from pymongo import ASCENDING, DESCENDING, MongoClient, ReturnDocument
+from pymongo import ASCENDING, DESCENDING, IndexModel, MongoClient, ReturnDocument
 from pymongo.database import Database as MongoDatabase
 from pymongo.errors import DuplicateKeyError
 
@@ -37,8 +38,8 @@ class Database:
     def prepare(cls) -> None:
         """Indexes made (made again, they change nothing), then the data brought to this version, once."""
         for store in cls.stores():
-            for keys, options in store.INDEXES:
-                cls.db[store.COLLECTION].create_index(keys, **options)
+            if store.INDEXES:  # a collection's indexes in one command, built together
+                cls.db[store.COLLECTION].create_indexes([IndexModel(keys, **options) for keys, options in store.INDEXES])
         deployment = cls.db[cls.DEPLOYMENT]
         deployment.update_one({"_id": cls.DEPLOYMENT}, {"$setOnInsert": {"data_version": cls.VERSION}}, upsert=True)
         found = deployment.find_one({"_id": cls.DEPLOYMENT})["data_version"]
@@ -107,10 +108,38 @@ class Store:
 
     def page(self, query: dict[str, Any], after: Any = "", limit: Any = PAGE, newest: bool = False) -> list[dict]:
         """At most PAGE documents, after the id given, oldest or newest first."""
+        return self.paged(query, after, limit, newest)[0]
+
+    def paged(self, query: dict[str, Any], after: Any = "", limit: Any = PAGE, newest: bool = False,
+              projection: dict[str, Any] | None = None) -> tuple[list[dict], str | None]:
+        """A page, and ``next``: the id to ask for the page after it, None when there is none. One more is read
+        than is given, so the last page says so itself."""
         size = self.size(limit)
         if after:
-            query = {**query, "_id": {"$lt" if newest else "$gt": str(after)}}
-        return list(self.col.find(query).sort("_id", DESCENDING if newest else ASCENDING).limit(size))
+            query = self.every(query, {"_id": {"$lt" if newest else "$gt": str(after)}})
+        found = list(self.col.find(query, projection).sort("_id", DESCENDING if newest else ASCENDING).limit(size + 1))
+        return self.cut(found, size)
+
+    @staticmethod
+    def cut(found: list[dict], size: int, cursor: Any = None) -> tuple[list[dict], str | None]:
+        """The first ``size`` of what was read, and the cursor of the last one given when more were read."""
+        shown = found[:size]
+        return shown, ((cursor or (lambda row: row["_id"]))(shown[-1]) if len(found) > size else None)
+
+    @staticmethod
+    def matching(text: Any, *fields: str) -> dict[str, Any]:
+        """A list's ``q``: the text, case aside, anywhere in one of the fields; {} for no text."""
+        text = " ".join(str(text or "").split())[:200]
+        if not text:
+            return {}
+        pattern = {"$regex": re.escape(text), "$options": "i"}
+        return {"$or": [{field: pattern} for field in fields]}
+
+    @staticmethod
+    def every(*parts: dict[str, Any]) -> dict[str, Any]:
+        """Queries that each hold, their ``$or`` kept apart."""
+        parts = tuple(part for part in parts if part)
+        return parts[0] if len(parts) == 1 else {"$and": list(parts)} if parts else {}
 
 
 class Lease(Store):

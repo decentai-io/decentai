@@ -35,6 +35,8 @@ services:
       - sh
       - -c
       - >-
+        if [ "$$MONGO_INITDB_ROOT_PASSWORD" = change-me ]; then
+        echo "MONGO_ROOT_PASSWORD still says change-me: give the database a password of your own." >&2; exit 1; fi;
         rm -f /tmp/member.key &&
         head -c 756 /dev/urandom | base64 > /tmp/member.key && chmod 400 /tmp/member.key &&
         chown mongodb /tmp/member.key &&
@@ -246,6 +248,8 @@ services:
       AI_RUNTIME_AGENT_READY_SECONDS:
       AI_RUNTIME_AGENT_CANCEL_SECONDS:
       AI_RUNTIME_AGENT_CONNECTIONS_MAX:
+      AI_RUNTIME_ASK_HOURS:
+      AI_RUNTIME_CHATS_MAX:
       AI_RUNTIME_LOG_LEVEL:
       AI_RUNTIME_INSIDE_HOSTS:
       TZ:
@@ -254,6 +258,9 @@ services:
       HTTPS_PROXY:
       NO_PROXY:
       SSL_CERT_FILE:
+    # a model on this machine, as host.docker.internal, on Linux as Docker Desktop has it
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - default
       - sandbox
@@ -305,6 +312,8 @@ services:
       AI_SANDBOX_PROGRAM_UNPACKED_MAX_GIB:
       AI_SANDBOX_PROGRAM_KEPT_DAYS:
       AI_SANDBOX_STOP_SECONDS:
+      AI_SANDBOX_PROCESS_EXIT_SECONDS:
+      AI_SANDBOX_CALLER_GONE_SECONDS:
       AI_SANDBOX_LOG_LEVEL:
     # Its door answers /health once a jail holds; it is TLS, with its own certificate, so the check doesn't verify it.
     healthcheck:
