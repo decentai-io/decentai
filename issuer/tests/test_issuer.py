@@ -206,6 +206,12 @@ class TestIssuing:
         listed, _ = await deployment.call(api, "Certificates:Node:list")
         assert {node["_id"] for node in listed["nodes"]} == {api.fields["id"], runtime.fields["id"]}
 
+    async def test_a_token_asked_with_uses_or_expires_not_whole_numbers_is_refused(self, deployment):
+        api = await deployment.node(deployment.first_token)
+        for asked in ({"uses": "many"}, {"uses": -1}, {"expires": "soon"}, {"expires": 1.5}):
+            answer, status = await deployment.call(api, "Certificates:Token:create", {"kind": "runtime", **asked})
+            assert status == 400, asked
+
     async def test_a_used_up_token_enrolls_nobody(self, deployment):
         api = await deployment.node(deployment.first_token)
         token = (await deployment.call(api, "Certificates:Token:create", {"kind": "runtime", "uses": 1}))[0]["token"]

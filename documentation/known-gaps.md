@@ -62,7 +62,9 @@ which matter with scale, are for later.
 - [x] **S12 (checked)** `deploy/config/deploy.env.example` writes `change-me` for the database passwords
   (`MONGO_ROOT_PASSWORD`, `AI_API_DATABASE_URI`, `ISSUER_DATABASE_PASSWORD`), and nothing refuses them; only the
   encryption key is checked. `setup.py` replaces them, a hand-made file may not. *Do:* refuse `change-me` at start.
-  *Done:* The API server and the issuer refuse to start with `change-me`, the setup code too.
+  *Done:* The API server and the issuer refuse to start with `change-me`, the setup code too. *Still open (2026-11-13):*
+  nothing refuses `MONGO_ROOT_PASSWORD` left `change-me`: the database's root account is made with it. *Done
+  (2026-11-13):* the database container refuses to start with it.
 - [x] **S13** The outside-call check (SSRF) does not treat NAT64 addresses (`64:ff9b::/96`) as private; the old did.
   `api_server/src/utils.py`. *Done:* In the API server and the way out; `shared/mcp.py` had it already.
 - [x] **S14** The issuer writes its intermediate's private key unencrypted (mode 0600), and the first run's setup code
@@ -90,6 +92,10 @@ which matter with scale, are for later.
 - [x] ~~**S21** The database checks nothing itself: the old installed MongoDB `$jsonSchema` validators at start; now
   only the code checks. `api_server/`.~~ *Dropped:* The code is the one place shapes are checked; validators would be
   a second copy to keep in step.
+- [ ] **S22** The install tokens `deploy/setup/identities.py` makes, for each node folder and by `token <kind>`, have
+  no limit of uses, no end and shared scope: one that leaks enrolls nodes of its kind until the issuer forgets it.
+  Tokens an administrator makes in the web client are single-use for 7 days. *Do:* give setup's tokens an end and a
+  count, and a way to revoke them.
 
 ## Correctness and performance
 
@@ -121,17 +127,30 @@ which matter with scale, are for later.
 - [x] **P9** Heavy work on the event loop (`str(state)` again and again while trimming; base64 of up to 16 pictures of
   5 MB), and caches never pruned (pictures, `Sandboxes.offered`). `runtime/src/mind/mind.py`,
   `runtime/src/agents/functions.py`, `runtime/src/sandboxes/sandboxes.py` (filled from `agents/process.py`). *Partly
-  done by S6. Later: the rest.*
+  done by S6. Later: the rest.* *Done (moved here from T1, where it was written by mistake):* Pictures are encoded off
+  the event loop, a picture no brain shows any more is let go, and the state is measured once while trimming, each trim
+  saying what it freed.
 - [x] **P10** The sandbox overcommits memory (32 processes × 1 GiB in a 4 GiB container) and nothing shields its
   supervisor from the kernel's OOM killer. `sandbox/src/__main__.py`, `sandbox/src/watch.py`. *Done:* Each jail starts
   with `oom_score_adj` 1000.
+- [ ] **P11** A node's certificate from an administrator's token lasts 12 hours: a remote node down longer cannot
+  enrol again without a new token. *Do:* renew on a certificate still valid, and say how long one lasts where the
+  token is made.
+- [ ] **P13** What an agent writes is held to less than what a person writes: `record.create` of a file skips the
+  resource's `constraints` (types, size), a sample's files too, and an agent's record may leave `required` fields
+  empty. *Do:* check both on every write, whoever writes.
+- [ ] **P14** Limits the standard states are not checked: a `chat` message's text, table and choices, a chart's shape
+  (only the 512 KiB message cap holds), and the syntax of hosts `network.open` asks for (the person sees them on the
+  card). *Do:* check them where the runtime takes the call.
+- [ ] **P12** `shared/agent_manifest.py`, `shared/container.py` and `shared/record_fields.py` are used by no image
+  that ships. *Do:* remove them, or use them where their copies live.
 
 ## Tests and CI
 
 - [x] **T1** The runtime has 32 tests and none for a model connector, the hand-written Bedrock event-stream parser
-  among them (the old: 1,198, connectors included). *Done:* Pictures are encoded off the event loop, a picture no brain shows any more is let go, and the state is measured once while trimming, each trim saying what it freed. `Sandboxes.offered` by S6.*
+  among them (the old: 1,198, connectors included). *Done:* `runtime/tests/test_models.py`: one recorded stream for each protocol (Bedrock's event stream, Anthropic, OpenAI's chat and responses, Gemini), arriving in pieces that cut every frame, with text, thinking, a tool call and usage; and an error in the stream. Vertex reads with the Gemini and Anthropic connectors. *(Moved here from T2, where it was written by mistake.)*
 - [x] **T2** The API server, issuer, communication and shared have 230 tests (the old Data Core: 1,160); nothing tests
-  OAuth, the outside-call client, key rotation, notifications, or more than one server. *Done:* `runtime/tests/test_models.py`: one recorded stream for each protocol (Bedrock's event stream, Anthropic, OpenAI's chat and responses, Gemini), arriving in pieces that cut every frame, with text, thinking, a tool call and usage; and an error in the stream. Vertex reads with the Gemini and Anthropic connectors. And (2026-11-12) the API server's: `test_oauth.py` (the code exchanged once, for the person who started it, tokens sealed; a fresh access token for an agent, never the refresh token; nothing sent where the organization did not register), `test_outside.py` (only public addresses, each redirect checked again, a credential to its own host alone, size and deadline), `test_keys.py` (a value sealed under an older key opens until `admin reencrypt` seals it under the new one), `test_notify.py` (push or else email, nothing for a chat open in a browser, hidden text, an address's format, retries and pause), `test_servers.py` (an event kept through one server reaches a browser on another; a schedule, a notification and a placement done once by several servers). The change stream starts over from now after a drop invalidates it.*
+  OAuth, the outside-call client, key rotation, notifications, or more than one server. *Done (2026-11-12):* the API server's: `test_oauth.py` (the code exchanged once, for the person who started it, tokens sealed; a fresh access token for an agent, never the refresh token; nothing sent where the organization did not register), `test_outside.py` (only public addresses, each redirect checked again, a credential to its own host alone, size and deadline), `test_keys.py` (a value sealed under an older key opens until `admin reencrypt` seals it under the new one), `test_notify.py` (push or else email, nothing for a chat open in a browser, hidden text, an address's format, retries and pause), `test_servers.py` (an event kept through one server reaches a browser on another; a schedule, a notification and a placement done once by several servers). The change stream starts over from now after a drop invalidates it.*
 - [x] **T3** The old's 94 hostile-agent tests (`ai_runtime/tests/test_confinement_live.py`, `test_spawner_live.py`)
   are not ported to the sandbox's tests. *Done:* `sandbox/tests/test_sandbox.py`, `TestAHostileProcess`: the old attempts that apply to a jail (kernel calls, sockets, mounts, devices, the sandbox's port, identity and files, the host's /proc files, signalling every process, a child left behind), with the OOM score that proves P10. The rest tested the old runtime's builder, pool and helper, which the redesign has no more.*
 - [x] **T4** CI passes when every sandbox test is skipped (`sandbox/tests/test_sandbox.py`, `skipif`); the old failed

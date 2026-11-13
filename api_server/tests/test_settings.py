@@ -11,7 +11,7 @@ import time
 import pytest
 
 from conftest import NOTES, World
-from api_server.chats.store import Chats, Events
+from api_server.chats.store import Cards, Chats, Events
 from api_server.settings.notify import Notifier, NotifyTo, Outbox
 from api_server.settings.webhooks import Hooks, Webhooks
 
@@ -44,6 +44,20 @@ class TestConnections:
         assert world.ok("Settings:Llm:list", {}, org.member)["connections"] == []
         world.ok("Settings:Llm:models", {"connection_id": made["connection_id"]}, org.admin)
         assert runtime.calls[-1][0] == "Runtime:Model:check"
+
+    def test_a_chat_uses_a_connection_its_person_shares_else_the_default(self, world, org, runtime):
+        default, other = [world.ok("Settings:Llm:create", {"name": name, "provider": "openai", "address": address,
+                                                            "key": "sk-1", "models": ["m1"]}, org.admin)["connection"]
+                          for name, address in (("Main", f"{PUBLIC}/v1"), ("Private", f"{PUBLIC}/v2"))]
+        world.ok("Settings:Llm:setdefault", {"connection_id": default["connection_id"]}, org.admin)
+        chat = world.ok("AI:Chat:create", {}, org.member)["chat"]
+        Chats().col.update_one({"_id": chat["chat_id"]}, {"$set": {"settings.model": other["connection_id"]}})
+        runtime.holds(chat["chat_id"])
+        assert world.ok("AI:Chat:contract", {"chat_id": chat["chat_id"]}, runtime.caller)["model"]["address"]             == f"{PUBLIC}/v1"
+
+    def test_the_organizations_settings_name_only_its_own_connections(self, world, org):
+        for name in ("model", "speech_connection"):
+            world.refused("Settings:Organization:update", {"settings": {name: "another-orgs-connection"}}, org.admin, 400)
 
     def test_an_oauth_apps_secret_is_never_shown_and_its_endpoints_are_public(self, world, org):
         endpoints = {"authorize_url": f"{PUBLIC}/authorize", "token_url": "https://10.0.0.1/token"}
@@ -135,8 +149,11 @@ class TestWhatListsSay:
         handed = world.ok("Settings:Webhook:list", {}, org.admin)["handed"]
         assert [(h["webhook_id"], h["role"], h["owner"]["name"]) for h in handed] == [(hook, "handed", "Bo")]
         world.ok("Settings:Webhook:get", {"webhook_id": hook}, org.admin)
+        chat_id = Webhooks().col.find_one({"_id": hook})["chat_id"]
+        Cards().col.insert_one({"_id": "card-1", "chat_id": chat_id, "user_id": org.member.user_id, "status": "open"})
         world.ok("Settings:Webhook:accept", {"webhook_id": hook, "accept": True}, org.admin)
         assert world.ok("Settings:Webhook:get", {"webhook_id": hook}, org.admin)["webhook"]["chat_id"]
+        assert Cards().col.find_one({"_id": "card-1"})["user_id"] == org.admin.user_id
 
     def test_a_test_event_is_kept_as_a_delivery(self, world, org, hook):
         world.ok("Settings:Webhook:test", {"webhook_id": hook, "data": {"id": 1}}, org.member)

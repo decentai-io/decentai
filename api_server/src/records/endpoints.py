@@ -50,9 +50,10 @@ class RecordEndpoints(Controller):
             if not isinstance(value, (str, int, float, bool)) or "$" in name or "." in name:
                 raise ValueError("A key filter matches text, a number or true/false, by a field's name.")
             query[f"keys.{name}"] = value
-        records = Records().page(query, data.get("after"), data.get("limit"))
+        records, after = Records().paged(query, data.get("after"), data.get("limit"))
         handed = Records().col.find({"handing.to": caller.user_id, "kind": self.KIND})
-        return {"records": [Records().public(r) for r in records], "handed": [Records().public(r) for r in handed]}
+        return {"records": [Records().public(r) for r in records], "handed": [Records().public(r) for r in handed],
+                "next": after}
 
     @endpoint("See the kinds of record the agents you may use keep", changes=False)
     def shapes(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:

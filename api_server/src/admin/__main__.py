@@ -52,6 +52,8 @@ class Admin:
         if args.action == "list":
             return "\n".join(f"{o['_id']}  {o['status']:8}  {o['name']}" for o in Organizations().col.find())
         if args.action == "create":
+            if not args.name.strip() or "@" not in args.admin_email:
+                raise SystemExit("Give the organization a --name and its administrator an --admin-email.")
             password = Passwords.temporary()
             person = People.found(args.name, args.admin_name, args.admin_email, password)
             Users().set(person["_id"], must_change_password=True)
@@ -113,7 +115,14 @@ class Admin:
                                                    {"certificate": open(args.file, encoding="utf-8").read()})
             finally:
                 await RuntimeCalls.node.stop()
-        return str(asyncio.run(asked()))
+        answer = asyncio.run(asked())
+        if args.action == "install":
+            return "Installed." if answer.get("installed") else str(answer)
+        waiting = answer.get("waiting")
+        if not waiting:
+            return "No request is waiting: the intermediate is not near its end."
+        # the request as a file the root signs, and its fingerprint to compare by another way
+        return waiting["request"].rstrip() + "\n\nfingerprint " + waiting["fingerprint"]
 
     @staticmethod
     def _sealed() -> list[tuple[Any, str, Any]]:

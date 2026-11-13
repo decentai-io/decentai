@@ -15,6 +15,7 @@ class Runtimes(Store):
     """Nobody fills this list in: a runtime is on it once it reports."""
 
     COLLECTION = "runtimes"
+    INDEXES = (([("scope", Store.ASC), ("_id", Store.ASC)], {}),)
     #: Unheard this long, a runtime is silent; this long, gone, and its chats go free.
     SILENT, GONE = 15, 60
     ADDRESS = re.compile(r"(?:[A-Za-z0-9.\-]{1,253}|\[[0-9A-Fa-f:.]+\]):([0-9]{1,5})")

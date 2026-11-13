@@ -141,8 +141,10 @@ class TokenController:
         if not isinstance(lifetime, int) or lifetime < 1:
             return Router.failed("Token Error", "A lifetime is a whole number of seconds, above zero.")
         if peer["kind"] == "api":
-            uses = data.get("uses") or 1
-            expires = time.time() + int(data.get("expires") or 7 * 86400)
+            uses, seconds = data.get("uses") or 1, data.get("expires") or 7 * 86400
+            if not all(isinstance(n, int) and not isinstance(n, bool) and n >= 1 for n in (uses, seconds)):
+                return Router.failed("Token Error", "Uses and expires are whole numbers above zero.")
+            expires = time.time() + seconds
         else:
             if self.certifying.refused(peer["id"]):
                 return Router.failed("Permission Error", f"{peer['id']} is refused: it makes no tokens.", 403)

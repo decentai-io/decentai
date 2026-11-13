@@ -31,7 +31,7 @@ class Contract:
         org = OrgSettings().of(chat["org_id"], person["organization"].get("settings") or {})
         statements = [s for s in Rules().statements(person)
                       if any(p.startswith("agent") or p.startswith("*") for p in s["actions"])]
-        connection = Models().col.find_one({"_id": chat["settings"].get("model") or org["model"], "org_id": chat["org_id"]})
+        connection = self._connection(chat, person, org)
         skills = Skills().col.find({**Skills().visible(person), **self._chosen(chat, "skills")})
         servers = McpServers().col.find({**McpServers().visible(person), **self._chosen(chat, "mcp_servers")})
         return {
@@ -54,6 +54,17 @@ class Contract:
                                  "tools": [t["name"] for t in m["tools"] if t["on"]],
                                  "levels": {t["name"]: t.get("level", 2) for t in m["tools"] if t["on"]}}
                                 for m in servers]}}
+
+    @staticmethod
+    def _connection(chat: dict[str, Any], person: dict[str, Any], org: dict[str, Any]) -> dict[str, Any] | None:
+        """The chat's model connection: the one its person chose, while it is shared with one of their groups; else the
+        organization's default."""
+        chosen = chat["settings"].get("model")
+        if chosen:
+            found = Models().col.find_one({"_id": chosen, **Models.shared(person)})
+            if found is not None:
+                return found
+        return Models().col.find_one({"_id": org["model"], "org_id": chat["org_id"]}) if org["model"] else None
 
     @staticmethod
     def _chosen_model(chat: dict[str, Any], connection: dict[str, Any]) -> str:

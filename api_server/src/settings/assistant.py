@@ -101,9 +101,9 @@ class SharedEndpoints(Controller):
 
     @endpoint("See yours, and those shared with you", changes=False)
     def list(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
-        found = self.STORE().page(self.STORE().visible(caller.person), data.get("after"), data.get("limit"))
+        found, after = self.STORE().paged(self.STORE().visible(caller.person), data.get("after"), data.get("limit"))
         handed = self.STORE().col.find({"handing.to": caller.user_id})
-        return {"items": [self._public(d) for d in found], "handed": [self._public(d) for d in handed]}
+        return {"items": [self._public(d) for d in found], "handed": [self._public(d) for d in handed], "next": after}
 
     @endpoint("See one", changes=False)
     def get(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:

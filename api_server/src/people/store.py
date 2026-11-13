@@ -98,7 +98,8 @@ class Organizations(Store):
 
 class Users(Store):
     COLLECTION = "users"
-    INDEXES = (([("email", Store.ASC)], {"unique": True}), ([("org_id", Store.ASC)], {}))
+    INDEXES = (([("email", Store.ASC)], {"unique": True}), ([("org_id", Store.ASC), ("_id", Store.ASC)], {}),
+               ([("org_id", Store.ASC), ("groups", Store.ASC)], {}))
     EMAIL = re.compile(r"[^@\s]{1,64}@[^@\s]{1,190}\.[^@\s]{2,}")
 
     @classmethod
@@ -164,7 +165,8 @@ class Groups(Store):
     """Everyone holds every person without listing them; Administrators is made with the organization."""
 
     COLLECTION = "groups"
-    INDEXES = (([("org_id", Store.ASC), ("name", Store.ASC)], {"unique": True}),)
+    INDEXES = (([("org_id", Store.ASC), ("name", Store.ASC)], {"unique": True}),
+               ([("org_id", Store.ASC), ("_id", Store.ASC)], {}))
     EVERYONE, ADMINISTRATORS = "Everyone", "Administrators"
 
     def create(self, org_id: str, name: str, policies: list[str], everyone: bool = False) -> dict[str, Any]:
@@ -185,11 +187,24 @@ class Groups(Store):
         query = {"org_id": org_id, **({"_id": {"$in": [str(i) for i in ids]}} if ids is not None else {})}
         return list(self.col.find(query).sort("name", Store.ASC))
 
-    def counted(self, org_id: str) -> list[dict[str, Any]]:
-        """The organization's groups, each with how many people it holds as ``members``."""
-        people = Users().in_org(org_id)
-        return [{**group, "members": len(people) if group["everyone"] else
-                 sum(group["_id"] in person.get("groups", []) for person in people)} for group in self.in_org(org_id)]
+    def counted(self, org_id: str, groups: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+        """The groups given, or all the organization's, each with how many people it holds as ``members``: counted
+        by the database, nobody read."""
+        groups = self.in_org(org_id) if groups is None else groups
+        ids = [group["_id"] for group in groups if not group["everyone"]]
+        held = {row["_id"]: row["members"] for row in Users().col.aggregate([
+            {"$match": {"org_id": org_id, "groups": {"$in": ids}}},
+            {"$project": {"groups": {"$setIntersection": ["$groups", ids]}}}, {"$unwind": "$groups"},
+            {"$group": {"_id": "$groups", "members": {"$sum": 1}}}])} if ids else {}
+        everyone = Users().col.count_documents({"org_id": org_id}) if len(ids) < len(groups) else 0
+        return [{**group, "members": everyone if group["everyone"] else held.get(group["_id"], 0)} for group in groups]
+
+    def named(self, org_id: str, ids: Any) -> list[dict[str, Any]]:
+        """The groups of these ids, as a list names them: for its rows to say which groups they are in."""
+        ids = list(dict.fromkeys(str(i) for i in ids or []))
+        return [{"group_id": g["_id"], "name": g["name"], "everyone": g["everyone"],
+                 "administrators": g["name"] == self.ADMINISTRATORS}
+                for g in self.col.find({"org_id": org_id, "_id": {"$in": ids}}, {"name": 1, "everyone": 1})] if ids else []
 
     @staticmethod
     def clean_name(name: Any) -> str:
@@ -201,7 +216,8 @@ class Groups(Store):
 
 class Policies(Store):
     COLLECTION = "policies"
-    INDEXES = (([("org_id", Store.ASC), ("name", Store.ASC)], {"unique": True}),)
+    INDEXES = (([("org_id", Store.ASC), ("name", Store.ASC)], {"unique": True}),
+               ([("org_id", Store.ASC), ("_id", Store.ASC)], {}))
 
     def in_org(self, org_id: str, ids: list[str] | None = None) -> list[dict[str, Any]]:
         query = {"org_id": org_id, **({"_id": {"$in": [str(i) for i in ids]}} if ids is not None else {})}
@@ -270,7 +286,8 @@ class Links(Store):
 
     COLLECTION = "links"
     INDEXES = (([("expires_at", Store.ASC)], {"expireAfterSeconds": 0}),
-               ([("kind", Store.ASC), ("email", Store.ASC)], {}))
+               ([("kind", Store.ASC), ("email", Store.ASC)], {}),
+               ([("kind", Store.ASC), ("org_id", Store.ASC), ("_id", Store.ASC)], {}))
     SECONDS = {"invitation": 7 * 86400, "signup": 3600, "reset": 3600, "oauth": 600}
 
     def create(self, kind: str, email: str = "", **data: Any) -> str:

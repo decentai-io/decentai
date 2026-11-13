@@ -8,12 +8,14 @@ provider**, once (**Settings → Connected apps** in the web client). This is ho
 ## What every provider needs
 
 1. **The redirect URL,** where the provider sends a person back: `AI_API_URL` followed by `/oauth/callback`. Register
-   it exactly: the scheme, the host, the path, no trailing slash.
+   it exactly: the scheme, the host, the path, no trailing slash. The API server then sends the person on to the web
+   client, at `AI_API_APP_URL` followed by `/oauth/done`, where they finish connecting, signed in as they started.
 2. **A client id and a client secret,** what the provider gives the app you registered. The secret is encrypted when
    saved and never shown again. Some providers issue apps with no secret (noted below).
-3. **The registration's provider and endpoints:** the provider's id (lowercase letters, digits and `_`) and its
-   `authorize_url`, `token_url` and optional `identity_url`, each https and public. They must be the ones the agents'
-   manifests name in their `oauth` block, or connecting is refused. PKCE (S256) is always used.
+3. **The registration's provider and endpoints:** the provider's id (2 to 32 lowercase letters, digits and `_`,
+   starting with a letter) and its `authorize_url`, `token_url` and optional `identity_url`, each https and public.
+   They must be the ones the agents' manifests name in their `oauth` block, or connecting is refused. PKCE (S256) is
+   always used. An organization registers one app for each provider; changing an endpoint asks for the secret again.
 4. **The permissions the agents ask for.** Each agent's manifest names the scopes it asks for, and a person agrees to
    them when they connect. Where a provider makes you list them on the app as well, the lists below are what agents
    for that provider commonly ask for: check each manifest, and leave out what the agents you install don't ask for.
@@ -180,6 +182,21 @@ In Todoist's [App Management](https://app.todoist.com/app/settings/integrations/
 
 ## When a connection does not work
 
+- **"No '…' app is registered"**: the organization has no registration for
+  the provider the agent's manifest names; add it on **Settings →
+  Connected apps**, under that provider's id.
+- **"This agent sends '…' sign-ins somewhere other than the organization
+  registered"**: the manifest's `authorize_url`, `token_url` or identity
+  address differs from the registration's. Nothing was sent; make the
+  registration's endpoints the manifest's.
+- **"That connection was not started by you here, or has ended"**: the
+  person finished in another browser or session than they started in,
+  or more than 10 minutes after they started. They connect again.
+- **"The provider refused the exchange"**: the client id or secret is
+  wrong, the redirect URL registered differs, or, on a refresh, the
+  person withdrew the app's access.
+- **"The account must be connected again"**: the access token ended and
+  the provider gave no refresh token. They connect again.
 - **"redirect_uri mismatch"**, in any provider's words: the URL
   registered there is not the one **Settings → Connected apps** shows —
   a trailing slash, http instead of https, another host.

@@ -24,7 +24,7 @@ class Speech:
         settings = self._limited(caller)
         fields = {"model": settings["transcription_model"] or "whisper-1", **({"language": language} if language else {})}
         built = httpx.Request("POST", "http://speech", files={"file": ("audio", audio, mime or "audio/webm")}, data=fields)
-        answer = self._post(settings, "/v1/audio/transcriptions", built.read(), dict(built.headers))
+        answer = self._post(caller.org_id, settings, "/v1/audio/transcriptions", built.read(), dict(built.headers))
         return str(answer.json().get("text") or "")
 
     def speak(self, caller: Caller, text: str, language: str) -> tuple[bytes, str]:
@@ -35,8 +35,8 @@ class Speech:
         voice = settings["speech_voice"] or language or "auto"
         body = {"input": text, "voice": voice, "response_format": "wav",
                 **({"model": settings["speech_model"]} if settings["speech_model"] else {})}
-        answer = self._post(settings, "/v1/audio/speech", httpx.Request("POST", "http://x", json=body).read(),
-                            {"Content-Type": "application/json"})
+        built = httpx.Request("POST", "http://x", json=body).read()
+        answer = self._post(caller.org_id, settings, "/v1/audio/speech", built, {"Content-Type": "application/json"})
         return answer.content, answer.headers.get("content-type", "audio/wav")
 
     @staticmethod
@@ -48,12 +48,12 @@ class Speech:
         return settings
 
     @staticmethod
-    def _post(settings: dict[str, Any], path: str, body: bytes, headers: dict[str, str]) -> httpx.Response:
+    def _post(org_id: str, settings: dict[str, Any], path: str, body: bytes, headers: dict[str, str]) -> httpx.Response:
         """The platform's service, as its operator named it; a connection, the one way out."""
         if settings["speech"] == "service":
             answer = httpx.post(Settings.read().speech_url + path, content=body, headers=headers, timeout=120)
         else:
-            connection = Models().col.find_one({"_id": settings["speech_connection"]})
+            connection = Models().col.find_one({"_id": settings["speech_connection"], "org_id": org_id})
             if connection is None:
                 raise Refused("conflict", "The speech connection is gone.")
             key = Models().key(connection).get("key", "")

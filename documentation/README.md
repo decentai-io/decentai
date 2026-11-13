@@ -18,16 +18,19 @@ chat's trust. The model proposes; the platform decides.
 
 ```
 people ──https──► proxy ──► API server ◄──8004──► runtime ◄──8004──► sandbox
-                               │                    │  ▲                │
-                            MongoDB              models └──8005── processes' way out
+                             │      │               │  ▲                │
+                          MongoDB  speech        models └──8005── processes' way out
                                                                         │
             issuer ◄──8004── every node, to enroll and renew ───────────┘
 ```
 
-- Only the API server reaches the database. It runs no agent's code and calls no model.
+- Only the API server reaches the platform's database; the issuer keeps its own beside it. The API server runs no
+  agent's code, and asks no model to think: a runtime does.
 - The runtime keeps nothing: what a chat is, says and decides is the API server's.
 - The sandbox knows programs and processes, never agents or chats.
-- Every call between parts is HTTPS with mutual TLS, by certificates from the deployment's own roots.
+- Every call between the nodes (API servers, runtimes, sandboxes, the issuer) is HTTPS with mutual TLS, by
+  certificates from the deployment's own roots. The database and the speech container are reached on the stack's own
+  networks, without TLS.
 
 ## The documents
 
@@ -39,9 +42,9 @@ people ──https──► proxy ──► API server ◄──8004──► ru
 | [runtime](runtime.md) | holding a chat: agents' processes, the gate, what a program may call, the way out |
 | [assistant](assistant.md) | what thinks in a chat: threads, tools, tasks and runs, its work log, asking the person, history and state |
 | [communication](communication.md) | nodes, certificates, trust, enrolling, the issuer |
-| [operating](operating.md) | running a deployment: one computer, a server, backups, releases, the admin tool, more nodes |
+| [operating](operating.md) | running a deployment: one computer, the stack and its settings, a server, backups, releases, the admin tool, more nodes, model connections, speech |
 | [connected apps](connected-apps.md) | registering an organization's app with each OAuth provider |
 | [examples](examples/) | two example agents and their catalog, which the sandbox's tests run |
 | [known gaps](known-gaps.md) | what is still to fix, test or decide: security, performance, tests, features the old platform had |
 
-Why the parts are what they are is argued in [the paper](../paper/README.md).
+Why the parts are what they are is argued in [the white paper](whitepaper/decentai-whitepaper.pdf) ([its source](whitepaper/README.md)).

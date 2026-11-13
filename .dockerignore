@@ -2,7 +2,6 @@
 # nothing a local run, a test or an editor left behind, and no settings.
 .git
 documentation
-paper
 **/.claude
 
 # Settings and secrets

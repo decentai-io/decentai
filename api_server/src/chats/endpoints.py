@@ -388,12 +388,23 @@ class CardEndpoints(Controller):
 class ActivityEndpoints(Controller):
     NAME = "AI:Activity"
 
-    @endpoint("See what waits for you across your chats", changes=False)
+    @endpoint("See what waits for you across your chats: the open cards a page at a time, oldest first, counted",
+              changes=False)
     def list(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
-        cards = list(Cards().col.find({"user_id": caller.user_id, "status": "open"}).sort("_id", 1).limit(200))
+        """``waiting`` is how many cards each chat of the page has open, those on later pages too."""
+        mine = {"user_id": caller.user_id, "status": "open"}
+        cards, after = Cards().paged(mine, data.get("after"), data.get("limit"))
         schedules = Schedules().col.find({"user_id": caller.user_id, "paused": False}).sort("next_at", 1).limit(100)
-        chats = Chats().col.find({"_id": {"$in": list({card["chat_id"] for card in cards})}}, {"title": 1})
-        return {"cards": [Cards.public(c) for c in cards], "schedules": [Schedules.public(s) for s in schedules],
+        ids = list(dict.fromkeys(card["chat_id"] for card in cards))
+        chats = Chats().col.find({"_id": {"$in": ids}}, {"title": 1})
+        kinds = {row["_id"]: row["count"] for row in Cards().col.aggregate([
+            {"$match": mine}, {"$group": {"_id": "$kind", "count": {"$sum": 1}}}])}
+        waiting = {row["_id"]: row["count"] for row in Cards().col.aggregate([
+            {"$match": {**mine, "chat_id": {"$in": ids}}}, {"$group": {"_id": "$chat_id", "count": {"$sum": 1}}}])}
+        asking = next(Cards().col.aggregate([{"$match": mine}, {"$group": {"_id": "$chat_id"}}, {"$count": "chats"}]), {})
+        return {"cards": [Cards.public(c) for c in cards], "next": after, "total": sum(kinds.values()),
+                "counts": {kind: kinds.get(kind, 0) for kind in Cards.KINDS}, "chats_waiting": asking.get("chats", 0),
+                "waiting": waiting, "schedules": [Schedules.public(s) for s in schedules],
                 "chats": {chat["_id"]: chat["title"] for chat in chats}}
 
 

@@ -282,9 +282,35 @@ class UserEndpoints(Controller):
         Bounds().holds(caller.person, Rules().statements({"org_id": caller.org_id, "groups": ids}))
         return ids
 
-    @endpoint("See the organization's people", changes=False)
+    STATUS = {"active": {"status": "active"}, "disabled": {"status": "disabled"},
+              "held": {"$or": [{"status": "disabled"}, {"stopped": True}]}}
+
+    @endpoint("See the organization's people, a page at a time: searched, by a group, by how they stand", changes=False)
     def list(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
-        return {"users": [Users.public(p) for p in Users().in_org(caller.org_id)]}
+        org, users = caller.org_id, Users()
+        query: dict[str, Any] = {"org_id": org}
+        if data.get("group_id"):
+            group = Groups().get_in(org, data["group_id"])
+            if group is None:
+                raise Refused("not_found", "No such group.")
+            query = {**query, **({} if group["everyone"] else {"groups": group["_id"]})}
+        status = str(data.get("status") or "")
+        if status and status not in self.STATUS:
+            raise ValueError("A status is active, disabled or held.")
+        text = Users.matching(data.get("q"), "name", "email")
+        if text:  # or in a group of that name; Everyone holds them all without listing them
+            named = [g["_id"] for g in Groups().col.find({"org_id": org, "everyone": False,
+                                                           **Groups.matching(data["q"], "name")}, {"_id": 1}).limit(1000)]
+            text["$or"].append({"groups": {"$in": named}})
+        query = Users.every(query, self.STATUS.get(status, {}), text)
+        found, after = users.paged(query, data.get("after"), data.get("limit"))
+        admins = Groups().col.find_one({"org_id": org, "everyone": False, "name": Groups.ADMINISTRATORS}, {"_id": 1})
+        return {"users": [Users.public(p) for p in found], "next": after, "total": users.col.count_documents(query),
+                "counts": {"people": users.col.count_documents({"org_id": org}),
+                           "administrators": users.col.count_documents({"org_id": org, "groups": admins["_id"]})
+                           if admins else 0,
+                           "held": users.col.count_documents({"org_id": org, **self.STATUS["held"]})},
+                "groups": Groups().named(org, [g for p in found for g in p.get("groups") or []])}
 
     @endpoint("Add a person with a temporary password, where no mail is set up")
     def create(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
@@ -358,16 +384,33 @@ class GroupEndpoints(Controller):
             raise Refused("not_found", "No such group.")
         return group
 
-    @endpoint("See the organization's groups", changes=False)
+    @endpoint("See the organization's groups, a page at a time, searched; or those named", changes=False)
     def list(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
-        return {"groups": [{**self._public(g), "members": g["members"]} for g in Groups().counted(caller.org_id)]}
+        org, groups = caller.org_id, Groups()
+        if isinstance(data.get("ids"), list):
+            found, after = groups.in_org(org, [str(i) for i in data["ids"][:Groups.PAGE]]), None
+            total = len(found)
+        else:
+            query = Groups.every({"org_id": org}, Groups.matching(data.get("q"), "name"))
+            found, after = groups.paged(query, data.get("after"), data.get("limit"))
+            total = groups.col.count_documents(query)
+        named = list(dict.fromkeys(p for g in found for p in g["policies"]))
+        custom = {p["_id"]: p["name"] for p in Policies().in_org(org, [n for n in named if n not in Rules.BUILT_IN])}
+        return {"groups": [{**self._public(g), "members": g["members"]} for g in groups.counted(org, found)],
+                "next": after, "total": total,
+                "counts": {"groups": groups.col.count_documents({"org_id": org}),
+                           "own": groups.col.count_documents({"org_id": org, "everyone": False,
+                                                              "name": {"$ne": Groups.ADMINISTRATORS}})},
+                "policies": [{"policy_id": n, "name": Rules.BUILT_IN[n]["name"] if n in Rules.BUILT_IN else custom[n],
+                              "built_in": n in Rules.BUILT_IN} for n in named if n in Rules.BUILT_IN or n in custom]}
 
-    @endpoint("See one group and its people", changes=False)
+    @endpoint("See one group, and its people a page at a time", changes=False)
     def get(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
         group = self._group(data, caller)
-        people = Users().in_org(caller.org_id) if group["everyone"] else \
-            list(Users().col.find({"org_id": caller.org_id, "groups": group["_id"]}))
-        return {"group": self._public(group), "users": [Users.public(p) for p in people]}
+        query = {"org_id": caller.org_id, **({} if group["everyone"] else {"groups": group["_id"]})}
+        people, after = Users().paged(query, data.get("after"), data.get("limit"))
+        return {"group": self._public(group), "users": [Users.public(p) for p in people], "next": after,
+                "total": Users().col.count_documents(query)}
 
     @endpoint("Make a group")
     def create(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
@@ -432,12 +475,34 @@ class PolicyEndpoints(Controller):
             raise Refused("not_found", "No such policy; the built-in ones can't be changed.")
         return policy
 
-    @endpoint("See the policies, the built-in ones too", changes=False)
+    @endpoint("See the policies, the built-in ones first, a page at a time, searched; or those named", changes=False)
     def list(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
+        """The built-in ones come before the organization's own: a cursor that is a built-in one's id is a place
+        among them, any other a place among the organization's."""
         built = [{"policy_id": key, "name": p["name"], "statements": p["statements"], "built_in": True}
                  for key, p in Rules.BUILT_IN.items()]
-        return {"policies": built + [self._public(p) for p in Policies().in_org(caller.org_id)],
-                "catalog": Rules.described()}
+        policies, catalog = Policies(), Rules.described()
+        if isinstance(data.get("ids"), list):
+            ids = [str(i) for i in data["ids"][:Policies.PAGE]]
+            found = [p for p in built if p["policy_id"] in ids] + \
+                [self._public(p) for p in policies.in_org(caller.org_id, [i for i in ids if i not in Rules.BUILT_IN])]
+            return {"policies": found, "next": None, "total": len(found), "catalog": catalog}
+        text = " ".join(str(data.get("q") or "").split()).lower()
+        built = [p for p in built if not text or text in p["name"].lower()
+                 or any(text in action for s in p["statements"] for action in s["actions"])]
+        query = Policies.every({"org_id": caller.org_id}, Policies.matching(text, "name", "statements.actions"))
+        total = len(built) + policies.col.count_documents(query)
+        after, size = str(data.get("after") or ""), Policies.size(data.get("limit"))
+        if after in Rules.BUILT_IN:
+            built, after = [p for p in built if p["policy_id"] > after], ""
+        elif after:
+            built = []
+        found = built[:size + 1]
+        if len(found) <= size:
+            mine = Policies.every(query, {"_id": {"$gt": after}} if after else {})
+            found += [self._public(p) for p in policies.col.find(mine).sort("_id", Policies.ASC).limit(size + 1 - len(found))]
+        found, after = Policies.cut(found, size, lambda policy: policy["policy_id"])
+        return {"policies": found, "next": after, "total": total, "catalog": catalog}
 
     @endpoint("Write a policy")
     def create(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
@@ -494,11 +559,20 @@ class InvitationEndpoints(Controller):
     NAME = "IAM:Invitation"
     PER_DAY = 100
 
-    @endpoint("See the invitations not yet accepted", changes=False)
+    @endpoint("See the invitations not yet accepted, a page at a time, searched", changes=False)
     def list(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
-        found = Links().col.find({"kind": "invitation", "org_id": caller.org_id, "expires_at": {"$gt": Links.now()}})
+        """An invitation is shown by the start of its link's hash, and so is its cursor: every id that starts with
+        it comes before it followed by "g", past every hex digit."""
+        query = Links.every({"kind": "invitation", "org_id": caller.org_id, "expires_at": {"$gt": Links.now()}},
+                            Links.matching(data.get("q"), "email"))
+        after, size = str(data.get("after") or ""), Links.size(data.get("limit"))
+        paged = Links.every(query, {"_id": {"$gt": after + "g"}}) if after else query
+        found, after = Links.cut(list(Links().col.find(paged).sort("_id", Links.ASC).limit(size + 1)), size,
+                                 lambda link: link["_id"][:16])
         return {"invitations": [{"invitation_id": link["_id"][:16], "email": link["email"],
-                                 "groups": link.get("groups", []), "expires_at": link["expires_at"]} for link in found]}
+                                 "groups": link.get("groups", []), "expires_at": link["expires_at"]} for link in found],
+                "next": after, "total": Links().col.count_documents(query),
+                "groups": Groups().named(caller.org_id, [g for link in found for g in link.get("groups") or []])}
 
     @endpoint("Invite a person by mail")
     def create(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:

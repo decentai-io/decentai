@@ -6,6 +6,7 @@ from __future__ import annotations
 import pytest
 
 from conftest import NOTES, JOURNAL, World
+from api_server.agents.store import Agents
 from api_server.chats.store import Cards, Events, RecordUses
 from api_server.people.store import Groups, Policies
 from api_server.records.store import Records
@@ -103,6 +104,17 @@ class TestAnAgentsReach:
         record = Records().col.find_one({"_id": made["ref"]})
         assert Records().opened(record)["password"] == "pw-1"
         assert runtime.frames("answer")[-1]["card"] == card["_id"]
+
+    def test_a_field_naming_a_host_the_agent_may_reach_is_its_persons_to_fill(self, world, org, runtime, chat):
+        Agents().col.update_one({"org_id": org.org_id, "agent_id": "notes"},
+                                {"$set": {"manifest.network": {"hosts": [{"from_secret": "mailbox.server"}]}}})
+        refused, status = agent(world, runtime, chat, "create", resource="mailbox", fields={"server": "anywhere.example"})
+        assert status == 403 and "server" in refused["error"]["message"]
+        made, _ = agent(world, runtime, chat, "create", resource="mailbox", fields={})
+        Records().col.update_one({"_id": made["ref"]}, {"$set": {"keys.server": "mail.y"}})  # as its person fills it
+        changed, status = agent(world, runtime, chat, "update", call="c2", resource="mailbox", ref=made["ref"],
+                                fields={"server": "anywhere.example"})
+        assert status == 403 and Records().col.find_one({"_id": made["ref"]})["keys"]["server"] == "mail.y"
 
 
 class TestSharing:

@@ -239,3 +239,13 @@ async def test_a_save_sends_only_the_parts_that_changed():
         await chat.mind._keep()
     assert [(save.get("whole", False), sorted(save["parts"])) for save in api.of("AI:State:save")] == [
         (True, ["head", "thread:"]), (False, ["head"])]
+
+
+def test_a_secret_names_a_host_only_as_a_host_never_a_pattern():
+    from types import SimpleNamespace
+    from runtime.controllers.programs import Programs
+    manifest = {"network": {"hosts": [{"from_secret": "mailbox.server"}]}}
+    programs = Programs(SimpleNamespace(agents={"probe": {"manifest": manifest}}))
+    for value in ("*.com", "com", "any", "a.example/x", " ", "Mail.Example.org:993 "):
+        programs._revealed("probe", "mailbox", {"server": value})
+    assert programs.revealed["probe"] == {"mail.example.org:993"}

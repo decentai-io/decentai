@@ -181,7 +181,7 @@ class Cards(Store):
     answered, or expired when its work is stopped. One open long is told again every REMIND seconds."""
 
     COLLECTION = "cards"
-    INDEXES = (([("user_id", Store.ASC), ("status", Store.ASC)], {}), ([("chat_id", Store.ASC)], {}))
+    INDEXES = (([("user_id", Store.ASC), ("status", Store.ASC), ("_id", Store.ASC)], {}), ([("chat_id", Store.ASC)], {}))
     KINDS = ("approval", "question", "form", "network", "skill", "memory")
     REMIND = 12 * 3600
 
@@ -247,9 +247,40 @@ class Schedules(Store):
     """One document a schedule. ``next_at`` is when it is due; a server claims it before firing it."""
 
     COLLECTION = "schedules"
-    INDEXES = (([("next_at", Store.ASC)], {}), ([("chat_id", Store.ASC)], {}), ([("user_id", Store.ASC)], {}),
-               ([("org_id", Store.ASC)], {}))
+    INDEXES = (([("next_at", Store.ASC)], {}), ([("chat_id", Store.ASC)], {}), ([("org_id", Store.ASC)], {}),
+               ([("user_id", Store.ASC), ("_id", Store.ASC)], {}),
+               ([("user_id", Store.ASC), ("next_at", Store.ASC), ("_id", Store.ASC)], {}))
     PER_CHAT, RUNS = 50, 20
+    #: Whether its last run failed.
+    FAILED = {"$eq": [{"$arrayElemAt": ["$runs.failed", -1]}, True]}
+    #: How a schedule stands: one that will run, its last run fine or failed; paused; or a one-off that has run.
+    RUNS_NEXT = {"paused": False, "next_at": {"$ne": None}}
+    STATES = {"active": {**RUNS_NEXT, "$expr": {"$not": [FAILED]}}, "failing": {**RUNS_NEXT, "$expr": FAILED},
+              "paused": {"paused": True}, "done": {"paused": False, "next_at": None}}
+
+    def listed(self, query: dict[str, Any], after: Any, limit: Any) -> tuple[list[dict[str, Any]], str | None]:
+        """Those that will run, the soonest first, then those paused or done, oldest first. The cursor says where in
+        that order: ``a|<next_at>|<id>`` among the first, ``b|<id>`` among the others."""
+        size, part, at, last = self.size(limit), "", None, ""
+        if after:
+            part, *rest = str(after).split("|")
+            try:
+                at, last = (datetime.fromisoformat(rest[0]), rest[1]) if part == "a" else (None, rest[0])
+            except (IndexError, ValueError):
+                part = "?"
+            if part not in ("a", "b") or len(rest) != (2 if part == "a" else 1):
+                raise ValueError("after is the next a list of schedules gave.")
+        found: list[dict[str, Any]] = []
+        if part in ("", "a"):
+            running = self.every(query, self.RUNS_NEXT, {"$or": [{"next_at": {"$gt": at}}, {"next_at": at, "_id": {
+                "$gt": last}}]} if part == "a" else {})
+            found = list(self.col.find(running).sort([("next_at", Store.ASC), ("_id", Store.ASC)]).limit(size + 1))
+        if len(found) <= size:
+            resting = self.every(query, {"$or": [{"paused": True}, {"next_at": None}]},
+                                 {"_id": {"$gt": last}} if part == "b" else {})
+            found += list(self.col.find(resting).sort("_id", Store.ASC).limit(size + 1 - len(found)))
+        return self.cut(found, size, lambda row: f"b|{row['_id']}" if row["paused"] or not row.get("next_at")
+                        else f"a|{row['next_at'].isoformat()}|{row['_id']}")
 
     def due(self, now: Any) -> dict[str, Any] | None:
         """One due schedule, claimed for a minute by this server."""

@@ -27,7 +27,7 @@ hosts a process may reach, or when a process ends normally. Those are its caller
 processes.
 
 **Its callers** are known by their certificates. Each sees and controls only its own processes, named by the
-caller that started them.
+caller that started them. A sandbox whose certificate names a scope serves only callers of that scope.
 
 ## 2. What a program is
 
@@ -61,19 +61,26 @@ A process runs `start` from its program, as an unprivileged user of its own, in 
 |---|---|---|
 | `/program` | its program, unpacked | read-only, with the other processes of that program |
 | `/home/run` | its home and working folder, empty at the start | its own; gone when it ends |
-| `/tmp`, `/dev/shm` | its temporary files | its own; gone when it ends |
-| `/usr`, `/bin`, `/lib`, `/etc` | the base | read-only, with every process |
+| `/tmp`, `/dev/shm` | its temporary files, in memory: at most 1 GiB and 256 MiB | its own; gone when it ends |
+| `/usr`, `/bin`, `/sbin`, `/lib`, `/lib64`, `/etc` | the base | read-only, with every process |
 | `/proc` | its own processes; what it would show of the host's, and Docker hides, covered | its own |
 | `/dev/null`, `/dev/zero`, `/dev/random`, `/dev/urandom` | the usual devices | — |
 
-- **Its environment** is the variables its caller gave, then the sandbox's own over them: `HOME`, `TMPDIR`,
-  `PATH`, and its way out.
+- **Its user** is user 1000 inside its jail, and a user of its own outside it.
+- **Its environment** is the variables its caller gave, then the sandbox's own over them: `HOME` (`/home/run`),
+  `TMPDIR` (`/tmp`), `PATH`, and its way out. A caller's variable is named by letters, digits and `_`, not starting
+  with a digit or `LD_`; together they are at most 64 KiB.
 - **Its arguments** are the ones its caller gave.
 - **Its standard input and output** carry the program protocol. Its standard error is its log.
 - **Its network** is its own: nothing is in it but its way out.
 - **Its first process** is `tini`, which reaps and passes signals on; with network, `socat` holds its way out.
   Then its program starts.
 - **It shares nothing writable** with any other process, not even another process of the same program.
+- **Some kernel calls are refused** to it: tracing or reading another process (`ptrace`, `process_vm_*`), `bpf`,
+  `perf_event_open`, `userfaultfd`, `pidfd_getfd`, io_uring, mounting, `pivot_root` and the new mount calls, new
+  namespaces (`unshare`, `setns`, `clone` with namespace flags; `clone3` answers that there is no such call), kernel
+  modules, `kexec`, the kernel's keys, opening by file handle, System V shared memory, messages and semaphores, POSIX
+  message queues, and sockets other than Unix, IPv4 and IPv6.
 
 **The base** is the system's libraries and Python 3.12, and nothing for any one program: a program that needs more,
 a browser for one, carries it. The sandbox reports its base by name beside its machine, so a caller knows what a
@@ -86,16 +93,17 @@ program starts inside it are its threads and child processes.
 
 | Limit | Default | When reached |
 |---|---|---|
-| memory, counting the files in its home, `/tmp` and `/dev/shm` | 1 GiB, or what its caller asked for, up to 4 GiB | the whole process is ended; the reason is "memory" |
+| memory, counting the files in its home, `/tmp` and `/dev/shm`; no swap | 1 GiB, or what its caller asked for, from 16 MiB up to 4 GiB | the whole process is ended; the reason is "memory" |
 | CPU | 1 CPU | it is slowed, never ended |
 | threads and child processes | 1024 | it can't start more, and runs on |
 | open files | 4096 | it can't open more, and runs on |
 
 - **At most 32 processes** run at once. Past that, a start is refused as full.
 - **Memory is overcommitted on purpose:** most processes use far less than their limit. When the container itself
-  nears its memory (90%), the sandbox ends the process using the most, from the caller whose processes use the
-  most together. The reason given is "machine short of memory". Should the kernel itself run short first, every
-  process is its first pick, before the sandbox.
+  nears its memory (90%, the kernel's file cache left out; looked at every second), the sandbox ends the process
+  using the most, from the caller whose processes use the most together, then waits 5 seconds before ending another.
+  The reason given is "machine short of memory". Should the kernel itself run short first, every process is its first
+  pick, before the sandbox.
 - **There is no time limit.** When a process ends normally is its caller's to decide.
 
 | Variable | Is | Default |
@@ -117,7 +125,7 @@ others:
 
 | Field | Is |
 |---|---|
-| `_id` | text, unique among its sender's messages |
+| `_id` | 1 to 64 letters, digits, `-` or `_`, unique among its sender's messages |
 | `body` | an object: `type`, a text, and `data`, an object. What they mean is the caller's and the program's |
 | `files` | optional: a list of paths in the process's home, relative to it, each a file that travels with the message |
 
@@ -128,10 +136,11 @@ others:
 - **Going out,** the sandbox sends each file named in `files` with the message. Each must be a plain file inside
   the home that the sandbox may read; links are not followed. A file the program locks to its own user can't be
   sent.
-- **Coming in,** the sandbox writes each file to `in/<id>/<name>` in the home, and lists those paths in `files`.
-- **Its standard error** is never parsed. Each line of it is sent as a message the sandbox makes:
-  `{"_id": "…", "body": {"type": "log", "data": {"line": "…"}}}`. A process sends at most 20 lines a second on
-  average, 200 at once; past that, lines are dropped, and the next line sent begins with how many were.
+- **Coming in,** the sandbox writes each file to `in/<id>/<name>` in the home, and lists those paths in `files`. An
+  id is 1 to 64 letters, digits, `-` or `_`; a name has no `/` and is at most 255 bytes.
+- **Its standard error** is never parsed. Each line of it, cut to 2,000 characters, is sent as a message the sandbox
+  makes: `{"_id": "log-<n>", "body": {"type": "log", "data": {"line": "…"}}}`. A process sends at most 20 lines a
+  second on average, 200 at once; past that, lines are dropped, and the next line sent begins with how many were.
 - **Ending:** the sandbox closes the program's standard input. The program has 5 seconds to exit, and is then
   ended.
 - **The sandbox ends a program** that writes a line that isn't such a message or is too long, or names in `files`
@@ -151,7 +160,7 @@ it, and a caller's are `Caller:*`, so anything that implements them can be a cal
 
 | Call | Carries | Answered |
 |---|---|---|
-| `Sandbox:Process:start` | `process`, its name; `program`, its digest; `memory`, in MiB; `environment`; `arguments`; `network`, true or false | `{started: true}` once it runs; or refused, with the `reason` `full`, `stopping` or `program` |
+| `Sandbox:Process:start` | `process`, its name, at most 128 characters and not one of the caller's running; `program`, its digest; `memory`, in MiB, optional; `environment`; `arguments`, a list of texts; `network`, true or false | `{started: true}` once it runs; or refused, with the `reason` `full`, `stopping` or `program` |
 | `Sandbox:Process:send` | `process`; `seq`; `message`, its `files` each `{id, name, size}` | `{taken: true}` once written to the program's input |
 | `Sandbox:Process:end` | `process` | `{ending: true}` at once; `ended` follows |
 | `Sandbox:File:piece` | `file`, the id of a file a process sent out; `offset` | `{data, size}` |
@@ -165,7 +174,8 @@ it, and a caller's are `Caller:*`, so anything that implements them can be a cal
 | `Caller:Process:ended` | `process`; `code`, its exit code; `reason` | once taken |
 | `Caller:File:piece` | `file`, a program's digest or a file's id; `offset` | `{data, size}`, or refused |
 
-A refusal is answered 409 with its `reason` where it has one, else 400.
+A refusal is answered 409 with its `reason` where it has one, else 400. A call from a caller the sandbox doesn't
+serve now (one that hasn't answered a `state`) is answered 403; a failure of the sandbox's own, 500.
 
 - **Order.** One process's messages go one at a time, each once the one before was taken, so they arrive in
   order. A program that writes faster than its caller takes simply waits.
@@ -173,7 +183,8 @@ A refusal is answered 409 with its `reason` where it has one, else 400.
 - **Bytes go to whoever needs them, in pieces, pulled from whoever holds them.** A program the sandbox lacks, it
   pulls from the caller. A file a caller sends in is named in the message by id and size, and the sandbox pulls it
   before handing the message on. A file a program sends out is copied aside, named by id and size, and the caller
-  pulls it; the copy is kept until taken, or for an hour. No call carries more than a piece.
+  pulls it; the copy is kept until taken, or for an hour. No call carries more than a piece: the sandbox gives
+  pieces of 768 KiB, and takes calls of at most 2 MiB.
 - **Start waits** until the process runs, pulling its program first if need be.
 - **State** goes every 5 seconds, and at once when something changes. A caller that hasn't answered for 15 seconds
   is gone, and its processes end.
@@ -187,17 +198,18 @@ A refusal is answered 409 with its `reason` where it has one, else 400.
 
 ## 7. The way out
 
-A process's network is its own and holds one address: `127.0.0.1:3128`, an HTTP proxy. Its environment names it
-(`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, and each in lowercase). There is nothing else: no other address, no
-name lookups, no UDP. A program reaches anything outside, the web or another protocol, by asking that proxy for a
-connection (HTTP `CONNECT`).
+A process's network is its own and holds one address: `127.0.0.1:3128`, a proxy. Its environment names it, as
+`http://127.0.0.1:3128` (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, and each in lowercase). There is nothing else: no
+other address, no name lookups, no UDP. A program reaches anything outside, the web or another protocol, by asking
+that proxy for a connection: HTTP `CONNECT`. What the proxy speaks is its caller's way out's; the runtime's also
+takes plain `http://` requests and SOCKS5 ([runtime](runtime.md#7-the-proxy)).
 
 - **The sandbox knows which process a connection comes from** by where it arrived, so a process carries no pass.
 - **It carries each connection to its caller's way out.** It opens TLS there with its own certificate, checks that
   the way out answers with the caller's own certificate, writes the process's name and a newline, and passes the
-  bytes through unread.
+  bytes through unread. A way out that doesn't answer within 20 seconds closes the connection.
 - **The way out decides** which hosts the process may reach, and refuses the rest. The sandbox never decides.
-- **The caller names its way out once,** in its answer to `state`. `start` says only whether the process gets
+- **The caller names its way out** in its answers to `state`: a port on the caller's own host. `start` says only whether the process gets
   network; a process started without it has no network at all.
 
 The way out must be the caller's own. The sandbox's network reaches what no process may: databases, other
@@ -230,10 +242,11 @@ sandbox simply starts nothing there.
 states in a row as ended, and end any process listed there that it doesn't know.
 
 **It starts only if a jail holds.** Before serving anyone, the sandbox starts one process the way every process
-is started, and checks that the process is held: its own user, no sight of the sandbox's files, no network. If
-not, the sandbox doesn't start.
+is started, and checks that the process is held: its own user, no sight of the sandbox's files, no network; and
+that the homes are on a memory filesystem. If not, the sandbox doesn't start.
 
-**What it sees of a process,** each command the process starts, is sent as a `log` message the sandbox makes.
+**What it sees of a process,** each command the process starts, is sent as a `log` message the sandbox makes:
+`started: <command>`, cut to 300 characters. The commands the sandbox itself starts in every jail are left out.
 
 | Variable | Is | Default |
 |---|---|---|
@@ -250,8 +263,9 @@ The sandbox runs as one container, started with:
 | `security_opt: writable-cgroups=true` | a cgroup made for each process |
 | `security_opt: seccomp=sandbox/config/seccomp.json`, `systempaths=unconfined`; on hosts with AppArmor, `apparmor=decentai-sandbox` | nsjail making its namespaces and the jail's view. The seccomp profile is Docker's default, with what nsjail needs allowed and what the sandbox refuses taken out. The AppArmor profile allows the capabilities nsjail uses, by name, and no mount of a file system that reaches the host's kernel or another machine |
 | `tmpfs: /data/homes` | homes kept in memory, counted in each process's |
+| `mem_limit` (4 GiB in the Compose file unless `SANDBOX_MEMORY` says) | the container's memory: what its processes share, and what the 90% is of |
 | `init: true` | an init that reaps and passes signals on |
 | its identity folder, at `AI_SANDBOX_IDENTITY` | its certificate |
 
-Before it serves anyone, it checks that a jail holds; if not, it doesn't start, and says what to mend. Its
-container's health is its door's `/health`, answered once it serves.
+Before it serves anyone, it checks that a jail holds; if not, it doesn't start, and says what to mend. A setting it
+can't use stops it too, saying which. Its container's health is its door's `/health`, answered once it serves.
