@@ -83,6 +83,8 @@ class Assistant:
                      schedule, title=str(what["prompt"]))
         elif kind == "schedule" and what.get("function"):
             self.work.scheduled(event)
+        elif kind == "call":
+            self.work.called(event)
         elif kind == "stop" and event.get("work"):
             self.work.stop(str(event["work"]), why="Stopped by the person.")
         elif kind == "stop":

@@ -8,6 +8,7 @@ from typing import Any
 
 from pymongo.errors import DuplicateKeyError
 
+from ..agents.store import Agents
 from ..doors.calls import ANYONE, Caller, Controller, Refused, endpoint
 from ..doors.limits import Limits
 from ..settings.organization import OrgSettings
@@ -359,9 +360,7 @@ class GroupEndpoints(Controller):
 
     @endpoint("See the organization's groups", changes=False)
     def list(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
-        people = Users().in_org(caller.org_id)
-        return {"groups": [{**self._public(g), "members": len(people) if g["everyone"] else
-                            sum(g["_id"] in p.get("groups", []) for p in people)} for g in Groups().in_org(caller.org_id)]}
+        return {"groups": [{**self._public(g), "members": g["members"]} for g in Groups().counted(caller.org_id)]}
 
     @endpoint("See one group and its people", changes=False)
     def get(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
@@ -413,6 +412,7 @@ class GroupEndpoints(Controller):
         for member in members:
             Bounds().over(caller.person, member)
         Users().col.update_many({"groups": group["_id"]}, {"$pull": {"groups": group["_id"]}})
+        Agents().col.update_many({"org_id": caller.org_id}, {"$pull": {"access": {"group_id": group["_id"]}}})
         Groups().col.delete_one({"_id": group["_id"]})
         Organizations().access_changed(caller.org_id)
         return {}

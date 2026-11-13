@@ -47,7 +47,7 @@ class Work:
         assistant = self.assistant
         id = assistant.next("t" if kind == "task" else "c")
         origin = origin or thread.origin
-        # a run's own: a scheduled function nothing waits for is a run of its own
+        # a run's own: a scheduled function, or one its person runs, nothing waits for is a run of its own
         run = thread.in_run if thread else {"thread": id, "origin": origin, "title": title[:200], "message": 0}
         entry = {"id": id, "thread": thread.id if thread else "", "origin": origin, "run": run, "kind": kind,
                  "title": title[:200], "tool": call["id"] if call else "", "status": RUNNING, "card": "",
@@ -153,6 +153,15 @@ class Work:
             await self.chat.ran(schedule, entry["status"] != DONE, (entry["output"] or {}).get("line", ""))
 
         self.jobs[entry["id"]] = self.assistant.later(run())
+
+    def called(self, event: dict[str, Any]) -> None:
+        """A function its person runs themselves: work nothing waits for, at the chat's trust, asking them as any
+        call does."""
+        agent_id, function_id = str(event.get("agent") or ""), str(event.get("function") or "")
+        inputs = event.get("inputs") if isinstance(event.get("inputs"), dict) else {}
+        entry = self.begin(None, None, "call", self.chat.titled(agent_id, function_id), inputs, origin="person")
+        entry["means"] = {"agent": agent_id, "function": function_id}
+        self.go(entry, self.calls(entry, inputs))
 
     # -- running and ending ---------------------------------------------------------------------------
 

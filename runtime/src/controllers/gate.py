@@ -24,15 +24,17 @@ class Gate:
         #: The items of this step and what waits on each: asked together once the step's calls have all come.
         self._step: list[tuple[dict[str, Any], asyncio.Future]] = []
 
-    async def check(self, level: int, item: dict[str, Any], trust: int, action: str = "", call: Any = None) -> None:
+    async def check(self, level: int, item: dict[str, Any], trust: int, action: str = "", call: Any = None,
+                    scoped: tuple[dict[str, Any], dict[str, str]] | None = None) -> None:
         """Passed, or PermissionError.
 
         ``action`` is what the rules judge, ``agent:<id>:<function>`` and, for what a program calls, ``:<what>``; with
         none, the level alone judges. ``item`` is what the person sees: its ``id``, ``agent``, ``function``, ``record``,
         ``level``, ``inputs`` and ``why``, and ``card`` when it waited on one already; its agent, function and record
         are what a remembered answer matches. ``call``, if given, has its ``deciding`` raised while it waits, so its
-        clock stops."""
-        effect = evaluate(self.rules, action) if action else "allow"
+        clock stops. ``scoped`` is the function call's scope values and their normalizations (shared.rules), which
+        statements narrowed by scopes are judged by."""
+        effect = evaluate(self.rules, action, *(scoped or (None, None))) if action else "allow"
         if effect == DENY:
             raise PermissionError("The organization's policy doesn't allow this.")
         if effect == "allow" and level <= trust:

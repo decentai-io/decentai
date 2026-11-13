@@ -136,6 +136,21 @@ class ChatEndpoints(Controller):
         await RuntimeCalls().send(chat, {"type": "screen", "call": str(data.get("call") or ""), "input": events})
         return {}
 
+    @endpoint("Run one of an agent's functions in a chat yourself, now, as its approvals allow")
+    async def call(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
+        chat = await thread(self.mine, data, caller)
+        agent, function = str(data.get("agent") or ""), str(data.get("function") or "")
+        if await thread(Contract().function, chat, caller.person, agent, function) is None:
+            raise Refused("not_found", "This chat uses no such agent's function.")
+        inputs = data.get("inputs") if isinstance(data.get("inputs"), dict) else {}
+        if len(str(inputs)) > 16000:
+            raise ValueError("A call's inputs are at most 16,000 characters.")
+        await thread(Limits().counted, f"call:{caller.user_id}", 30, 60, "calls")
+        if not await RuntimeCalls().send(chat, {"type": "call", "agent": agent, "function": function, "inputs": inputs},
+                                         caller.person):
+            await thread(Events().add, chat, "runtime_unavailable", {})
+        return {}
+
     @endpoint("Stop a chat's work; its cards expire")
     async def stop(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
         chat = await thread(self.mine, data, caller)
@@ -255,10 +270,11 @@ class CardEndpoints(Controller):
         if card is None:
             raise Refused("not_found", "No open card of yours by that id.")
         kept, once = await thread(self._answered, card, data.get("answer"), caller)
-        if await thread(Cards().answer, caller.person, card["_id"], kept) is None:
+        answered = await thread(Cards().answer, caller.person, card["_id"], kept)
+        if answered is None:
             raise Refused("conflict", "That card was answered already.")
         chat = await thread(Chats().find, card["chat_id"])
-        await thread(Events().add, chat, "card_closed", {"card_id": card["_id"]})
+        await thread(Events().add, chat, "card_closed", Cards.closed(answered))
         await RuntimeCalls().send(chat, {"type": "answer", "card": card["_id"], "call": card["call"],
                                          "kind": card["kind"], "answer": {**kept, **once}})
         return {}
@@ -365,7 +381,7 @@ class CardEndpoints(Controller):
         query = {"chat_id": caller.chat["_id"], **({"call": str(data["call"])} if data.get("call") else {}),
                  **({"_id": str(data["card"])} if data.get("card") else {})}
         for card in Cards().expire(query):
-            Events().add(caller.chat, "card_closed", {"card_id": card["_id"]})
+            Events().add(caller.chat, "card_closed", Cards.closed(card))
         return {}
 
 

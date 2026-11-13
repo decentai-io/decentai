@@ -52,7 +52,7 @@ class Programs:
                 "work": call.work, "within": True}
         # network.open asks the person with a card of its own: the gate judges it by the rules alone
         await self.chat.checked(0 if name == "network.open" else level, item, call.trust,
-                                f"agent:{call.agent}:{call.function}:{what}", call)
+                                f"agent:{call.agent}:{call.function}:{what}", call, getattr(call, "scoped", None))
         try:
             if name.startswith("record."):
                 return await self._record(call, name.split(".")[1], inputs, files, item)

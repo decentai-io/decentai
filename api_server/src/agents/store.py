@@ -32,7 +32,8 @@ class Sources(Store):
 
 
 class Agents(Store):
-    """One installed agent for each id in an organization. ``state`` is checking, ready or failed."""
+    """One installed agent for each id in an organization. ``state`` is checking, ready or failed. ``access`` is who
+    may use it: rows, each a group, an effect, functions and scopes, gone with it when it is uninstalled."""
 
     COLLECTION = "agents"
     INDEXES = (([("org_id", Store.ASC), ("agent_id", Store.ASC)], {"unique": True}),
@@ -43,6 +44,11 @@ class Agents(Store):
 
     def ready(self, org_id: str) -> list[dict[str, Any]]:
         return list(self.col.find({"org_id": org_id, "state": "ready"}))
+
+    def with_access(self, org_id: str, groups: set[str]) -> list[dict[str, Any]]:
+        """The agents whose access names any of these groups."""
+        return list(self.col.find({"org_id": org_id, "access.group_id": {"$in": list(groups)}},
+                                  {"agent_id": 1, "access": 1}))
 
     @staticmethod
     def public(agent: dict[str, Any]) -> dict[str, Any]:

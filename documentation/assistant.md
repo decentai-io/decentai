@@ -22,6 +22,7 @@ The assistant is what thinks in a chat: one for each chat a runtime holds ([runt
 | a webhook's message | starts a run, at the chat's trust (a webhook's chat is at the webhook's) |
 | a schedule's prompt | starts a run, at the schedule's trust |
 | a schedule's function | runs it as work of the log, at the schedule's trust; a run whose output has its `wake` field set starts a run |
+| a function its person calls | runs it as work of the log, at the chat's trust |
 | a stop | stops every thread and every piece of work; a thought in progress makes no calls |
 | a stop of one call or task | stops it, with everything under it, and tells its thread the person stopped it |
 | a card answered after its work stopped waiting | tells that work's thread, to run it again |
@@ -97,7 +98,7 @@ Every call, task, question, schedule and offer is an entry, by id (`c12`, `t3`):
 
 | Field | Is |
 |---|---|
-| `thread`, `origin` | the thread that started it (none for a scheduled function), and `person`, `schedule:<id>` or `webhook` |
+| `thread`, `origin` | the thread that started it (none for a scheduled function, or one its person calls), and `person`, `schedule:<id>` or `webhook` |
 | `kind`, `title` | call, mcp, task, question, sleep, schedule, memory or skill; and what it is, as a person reads it |
 | `status` | running, waiting (for the person), done, failed, stopped, or unknown (a restart cut it) |
 | `card` | the card it waited on |

@@ -81,6 +81,24 @@ async def test_a_schedules_run_works_at_its_trust_and_its_words_are_posted():
     assert told[-1]["why"] == "Doing it." and told[-1]["output"]["ref"] and told[-1]["inputs"] == '{"what": "a"}'
 
 
+async def test_a_function_its_person_runs_is_work_of_its_own_through_the_same_gate():
+    api, engine, chat = await placed([])
+    chat.put({"type": "call", "agent": "probe", "function": "wipe", "inputs": {"what": "a"}})
+    card = await opened(api)
+    entry = await until(lambda: work(chat) and work(chat)[0]["status"] == "waiting" and work(chat)[0])
+    assert card["request"]["items"][0]["function"] == "wipe"
+    assert (entry["origin"], entry["thread"], entry["title"]) == ("person", "", "Probe · Wipe")
+    chat.put(answer("card1", {"items": {entry["id"]: True}}))
+    await until(lambda: work(chat)[0]["status"] == "done")
+    assert sent(engine) == [{"what": "a"}] and said(api) == []
+    told = [data["data"] for data in api.of("AI:Event:append") if data["event"] == "work"]
+    assert told[-1]["origin"] == "person" and told[-1]["means"] == {"agent": "probe", "function": "wipe"}
+    chat.gate.rules = [{"effect": "allow", "actions": ["agent:*"]}, {"effect": "deny", "actions": ["agent:probe:*"]}]
+    chat.put({"type": "call", "agent": "probe", "function": "report", "inputs": {}})
+    refused = await until(lambda: len(work(chat)) == 2 and work(chat)[1]["status"] == "failed" and work(chat)[1])
+    assert refused["output"]["line"].startswith("refused") and len(sent(engine)) == 1
+
+
 async def test_a_run_below_what_it_needs_asks_its_person_and_waits():
     api, engine, chat = await placed([calls(("probe__wipe", {"what": "a"})), "Wiped a."])
     chat.put({"type": "schedule", "schedule_id": "s1", "what": {"prompt": "Wipe a"}, "trust": 0})

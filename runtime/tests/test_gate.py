@@ -64,3 +64,17 @@ async def test_items_that_waited_on_a_card_are_asked_on_it_apart_from_new_ones()
     gate = Gate(ask)
     await asyncio.gather(gate.check(2, item("c1", card="card7"), 1), gate.check(2, item("c2"), 1))
     assert sorted([[(i["id"], i.get("card")) for i in card] for card in shown]) == [[("c1", "card7")], [("c2", None)]]
+
+
+async def test_a_scoped_statement_holds_a_call_to_its_values_and_its_programs_calls_too():
+    ask, shown = asking(False)
+    gate = Gate(ask, rules=[{"effect": "allow", "actions": ["agent:mail:send", "agent:mail:send:*"],
+                             "scopes": {"mailbox": ["Work"]}}])
+    lowered = {"mailbox": "lowercase"}
+    await gate.check(1, item("c1", "send"), 3, "agent:mail:send", scoped=({"mailbox": "work"}, lowered))
+    await gate.check(1, item("c2", "send"), 3, "agent:mail:send:record.read:mail",
+                     scoped=({"mailbox": "work"}, lowered))
+    for number, values in enumerate(({"mailbox": "personal"}, {"mailbox": None}), 3):
+        with pytest.raises(PermissionError, match="policy"):
+            await gate.check(1, item(f"c{number}", "send"), 3, "agent:mail:send", scoped=(values, lowered))
+    assert shown == []
