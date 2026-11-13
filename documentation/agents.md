@@ -179,7 +179,8 @@ The runtime offers a program these functions. A program calls them as it calls a
 
 1. The function declares it in `calls`, naming the resource:
    `calls: [model, chat, "record.read:logins", "record.create:logins"]`. Anything else is refused.
-2. The organization's policy allows it, denies it, or asks, for any agent, function and resource.
+2. The organization allows it, denies it, or asks, for any agent, function and resource: by who may use the agent,
+   kept with it for each group, and by its policies ([api-server](api-server.md#5-agents)). A deny wins.
 3. A level above the chat's trust waits for a human's approval. An approval may be remembered for that agent,
    function and record.
 
@@ -501,7 +502,7 @@ A publisher offers agents through a catalog: one JSON document at an address the
 
 **A version never changes.** A different manifest or program under the same version is refused. An update is a
 new version in the catalog: reading the source again offers it, a human reviews and installs it, and the agent
-keeps its records and its permissions.
+keeps its records and who may use it.
 
 | Limit | |
 |---|---|

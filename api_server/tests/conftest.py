@@ -120,13 +120,18 @@ class World:
         return Org(admin, member)
 
     @staticmethod
-    def install(org: Org, *manifests: dict[str, Any]) -> None:
-        """Agents installed and ready, and Everyone allowed to use them."""
+    def installed(org: Org, *manifests: dict[str, Any]) -> None:
+        """Agents installed and ready, which nobody may use yet."""
         for manifest in manifests:
             Agents().col.insert_one({"_id": Agents.new_id(), "org_id": org.org_id, "agent_id": manifest["agent"]["id"],
                                      "version": manifest["agent"]["version"], "source_id": "s", "manifest": manifest,
                                      "base": "", "readme": "", "programs": {}, "programs_keys": [], "samples": None,
                                      "release": "r", "state": "ready", "error": "", "installed_at": Agents.now()})
+
+    @staticmethod
+    def install(org: Org, *manifests: dict[str, Any]) -> None:
+        """Agents installed and ready, and Everyone allowed to use them by a policy."""
+        World.installed(org, *manifests)
         policy = {"_id": Policies.new_id(), "org_id": org.org_id, "name": f"Agents {Policies.new_id()}",
                   "statements": [{"effect": "allow", "actions": ["agent:*"]}]}
         Policies().col.insert_one(policy)

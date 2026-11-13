@@ -1,13 +1,15 @@
-"""Sources, installs, the agents a person may use, their samples, and the programs runtimes fetch
-(api-server.md §5)."""
+"""Sources, installs, who may use an agent, the agents a person may use, their samples, and the programs runtimes
+fetch (api-server.md §5)."""
 
 from __future__ import annotations
 
 import asyncio
+from fnmatch import fnmatchcase
 from typing import Any
 
 from ..doors.calls import RUNTIME, Caller, Controller, Refused, endpoint
-from ..people.permissions import Rules
+from ..people.permissions import ALLOW, ASK, DENY, Rules
+from ..people.store import Groups, Organizations, Policies
 from ..runtimes.calls import RuntimeCalls
 from ..storage.files import PIECE, Storage
 from ..utils import Outside, Settings
@@ -19,6 +21,7 @@ from .store import Agents, Loaded, Sources
 class AgentEndpoints(Controller):
     NAME = "Agents:Agent"
     ADMIN = "agents:agent:install"
+    ACCESS_MOST = 50
 
     def _source(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
         source = Sources().get_in(caller.org_id, data.get("source_id"))
@@ -102,6 +105,7 @@ class AgentEndpoints(Controller):
         source = await asyncio.to_thread(self._source, data, caller)
         await asyncio.to_thread(Agents().col.delete_many, {"source_id": source["_id"]})
         await asyncio.to_thread(Sources().col.delete_one, {"_id": source["_id"]})
+        await asyncio.to_thread(Organizations().access_changed, caller.org_id)
         await RuntimeCalls().changed({"org_id": caller.org_id})
         return {}
 
@@ -117,12 +121,92 @@ class AgentEndpoints(Controller):
         agent = await asyncio.to_thread(self._agent, data, caller)
         return {"agent": Agents.public(await Installer().check(caller.org_id, agent["agent_id"]))}
 
-    @endpoint("Uninstall an agent; its records stay their people's")
+    @endpoint("Uninstall an agent, and who may use it; its records stay their people's")
     async def delete(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
         agent = await asyncio.to_thread(self._agent, data, caller)
         await asyncio.to_thread(Agents().col.delete_one, {"_id": agent["_id"]})
+        await asyncio.to_thread(Organizations().access_changed, caller.org_id)
         await RuntimeCalls().changed({"org_id": caller.org_id})
         return {}
+
+    def _managed(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
+        """An installed agent, for whoever may install agents."""
+        if Rules().allows(caller.person, self.ADMIN) != ALLOW:
+            raise Refused("refused", "Who may use an agent is chosen by who may install agents.")
+        agent = Agents().installed(caller.org_id, str(data.get("agent_id") or ""))
+        if agent is None:
+            raise Refused("not_found", "No such agent.")
+        return agent
+
+    @endpoint("See who may use an agent, by group, and the policies that also name it", changes=False)
+    def access(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
+        agent = self._managed(data, caller)
+        return {"access": agent.get("access") or [],
+                "groups": [{"group_id": g["_id"], "name": g["name"], "members": g["members"]}
+                           for g in Groups().counted(caller.org_id)],
+                "functions": [{"id": f["id"], "name": f["name"], "level": f["level"],
+                               "scoped_by": sorted(f.get("authorization") or {})}
+                              for f in agent["manifest"]["functions"]],
+                "scopes": [{"name": name, "description": scope["description"]}
+                           for name, scope in self._scopes(agent).items()],
+                "policies": self._naming(agent, caller.org_id)}
+
+    @endpoint("Choose who may use an agent, by group")
+    async def setaccess(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
+        rows = await asyncio.to_thread(self._set_access, data, caller)
+        await RuntimeCalls().changed({"org_id": caller.org_id})
+        return {"access": rows}
+
+    def _set_access(self, data: dict[str, Any], caller: Caller) -> list[dict[str, Any]]:
+        """The rows checked and kept, seen by every server at its next call."""
+        agent = self._managed(data, caller)
+        rows = self._rows(agent, data.get("access"), caller.org_id)
+        Agents().col.update_one({"_id": agent["_id"]}, {"$set": {"access": rows}})
+        Organizations().access_changed(caller.org_id)
+        return rows
+
+    def _rows(self, agent: dict[str, Any], raw: Any, org_id: str) -> list[dict[str, Any]]:
+        """Each row checked: one of the organization's groups, an effect, every function or some of the agent's, and
+        values for scopes the agent declares."""
+        if not isinstance(raw, list) or len(raw) > self.ACCESS_MOST:
+            raise ValueError(f"access is a list of at most {self.ACCESS_MOST} rows.")
+        groups = {group["_id"] for group in Groups().in_org(org_id)}
+        functions, scopes = {f["id"] for f in agent["manifest"]["functions"]}, self._scopes(agent)
+        checked = []
+        for number, row in enumerate(raw, 1):
+            row = row if isinstance(row, dict) else {}
+            effect, named, scoped = str(row.get("effect") or "").lower(), row.get("functions"), row.get("scopes") or {}
+            if row.get("group_id") not in groups:
+                raise ValueError(f"Row {number}: name one of the organization's groups.")
+            if effect not in (ALLOW, ASK, DENY):
+                raise ValueError(f"Row {number}: the effect is allow, ask or deny.")
+            if not isinstance(named, list) or not named or not all(isinstance(f, str) for f in named) \
+                    or named != ["*"] and not set(named) <= functions:
+                raise ValueError(f"Row {number}: functions is [\"*\"] for every one, or some of the agent's.")
+            if not isinstance(scoped, dict) or not set(scoped) <= set(scopes) or not all(
+                    isinstance(values, list) and all(isinstance(v, str) for v in values) for values in scoped.values()):
+                raise ValueError(f"Row {number}: scopes are the agent's own, each a list of values.")
+            checked.append({"group_id": row["group_id"], "effect": effect, "functions": list(dict.fromkeys(named)),
+                            **({"scopes": scoped} if scoped else {})})
+        return checked
+
+    @staticmethod
+    def _scopes(agent: dict[str, Any]) -> dict[str, Any]:
+        return (agent["manifest"].get("authorization") or {}).get("scopes") or {}
+
+    @staticmethod
+    def _naming(agent: dict[str, Any], org_id: str) -> list[dict[str, Any]]:
+        """The organization's policies naming any of the agent's actions: its functions, and what each calls."""
+        actions = [f"agent:{agent['agent_id']}:{f['id']}{call}" for f in agent["manifest"]["functions"]
+                   for call in ("", *(f":{c}" for c in f.get("calls") or []))]
+        found = []
+        for policy in Policies().in_org(org_id):
+            named = [pattern for statement in policy["statements"] for pattern in statement["actions"]
+                     if pattern.startswith("agent:") and any(fnmatchcase(action, pattern) for action in actions)]
+            if named:
+                found.append({"policy_id": policy["_id"], "name": policy["name"],
+                              "actions": list(dict.fromkeys(named))})
+        return found
 
     @endpoint("See what an agent's samples hold", changes=False)
     def samples(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:

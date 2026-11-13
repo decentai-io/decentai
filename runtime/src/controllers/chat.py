@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from shared.mcp import McpClient
+from shared.rules import normalizations, scope_values
 from ..models.connector import Connector, OnText
 from ..models.factory import Factory
 from ..models.usage import Usage
@@ -204,12 +205,14 @@ class Chat:
         item = {"id": work or f"m{next(self._ids)}", "agent": agent_id, "function": function_id, "level": level,
                 "name": self.titled(agent_id, function_id), "inputs": self.shown(inputs), "why": why[:1000],
                 "work": work, "before": True, **({"card": card} if card else {})}
-        await self.checked(level, item, trust, f"agent:{agent_id}:{function_id}")
+        manifest = self.agents[agent_id]["manifest"]
+        scoped = (scope_values(manifest, function, inputs), normalizations(manifest))
+        await self.checked(level, item, trust, f"agent:{agent_id}:{function_id}", scoped=scoped)
         process = await self._process(agent_id)
         offered = [await self.offered(record_id) for record_id in files]
         records: list[dict[str, Any]] = []
         output, made = await process.call(function_id, inputs, offered, agent=agent_id, work=work, trust=trust,
-                                          origin=origin, opened=set(), said=0, records=records)
+                                          scoped=scoped, origin=origin, opened=set(), said=0, records=records)
         return output, made, records
 
     async def mcp(self, server: dict[str, Any], tool: str, arguments: dict[str, Any], trust: int | None = None,
@@ -308,10 +311,11 @@ class Chat:
 
     # -- what its parts share -------------------------------------------------------------------------
 
-    async def checked(self, level: int, item: dict[str, Any], trust: int, action: str = "", call: Any = None) -> None:
+    async def checked(self, level: int, item: dict[str, Any], trust: int, action: str = "", call: Any = None,
+                      scoped: Any = None) -> None:
         """The gate, its refusal as a call's."""
         try:
-            await self.gate.check(level, item, trust, action, call)
+            await self.gate.check(level, item, trust, action, call, scoped)
         except PermissionError as refused:
             raise Process.Failed("refused", str(refused)) from None
 

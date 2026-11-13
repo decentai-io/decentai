@@ -10,6 +10,7 @@ import pytest
 from conftest import JOURNAL, NOTES, World
 from api_server.chats.schedules import Firing
 from api_server.chats.store import Cards, Chats, Events, Messages, Schedules
+from api_server.people.store import Groups
 from api_server.records.store import Records
 from api_server.runtimes.calls import RuntimeCalls
 from api_server.storage.database import Database
@@ -64,6 +65,22 @@ class TestChats:
         assert [a["agent_id"] for a in world.ok("AI:Chat:contract", {"chat_id": chat["chat_id"]},
                                                 runtime.caller)["agents"]] == ["notes"]
 
+    def test_its_person_runs_a_function_of_an_agent_the_chat_may_use(self, world, org, runtime, chat):
+        call = {"chat_id": chat["chat_id"], "agent": "notes", "function": "keep", "inputs": {"action": "open"}}
+        world.ok("AI:Chat:call", call, org.member)
+        assert runtime.frames("call") == [{"type": "call", "agent": "notes", "function": "keep",
+                                           "inputs": {"action": "open"}}]
+        world.refused("AI:Chat:call", call, org.admin, 404)  # the person's own chat alone
+        world.refused("AI:Chat:call", {**call, "function": "nowhere"}, org.member, 404)
+        world.refused("AI:Chat:call", {**call, "inputs": {"text": "x" * 16001}}, org.member, 400)
+        everyone = Groups().everyone(org.org_id)["_id"]
+        world.ok("Agents:Agent:setaccess", {"agent_id": "notes", "access": [
+            {"group_id": everyone, "effect": "deny", "functions": ["*"]}]}, org.admin)
+        world.refused("AI:Chat:call", call, org.member, 404)
+        world.ok("AI:Chat:update", {"chat_id": chat["chat_id"], "settings": {"agents": ["notes"]}}, org.member)
+        world.refused("AI:Chat:call", {**call, "agent": "journal", "function": "write"}, org.member, 404)
+        assert len(runtime.frames("call")) == 1
+
     def test_a_chats_state_is_kept_in_parts_as_given_up_to_its_limit(self, world, runtime, chat):
         runtime.holds(chat["chat_id"])
 
@@ -99,6 +116,19 @@ class TestCards:
         assert remembered[0]["agent"] == "notes" and remembered[0]["allowed"] is True
         world.ok("AI:Approval:Forget", {"id": remembered[0]["id"]}, org.member)
         assert world.ok("AI:Approval:Remembered", {}, org.member)["remembered"] == []
+
+    def test_a_closed_card_keeps_its_kind_and_answer_in_the_chats_history(self, world, org, runtime, chat):
+        runtime.holds(chat["chat_id"])
+        asked, approval = opened(world, runtime, chat), opened(world, runtime, chat, kind="approval", call="c2",
+                                                                items=[{"id": "c2", "agent": "notes"}])
+        world.ok("AI:Approval:Decide", {"card_id": asked, "answer": {"text": "Yes"}}, org.member)
+        world.ok("AI:Approval:expire", {"chat_id": chat["chat_id"], "call": "c2"}, runtime.caller)
+        closed = [e["data"] for e in world.ok("AI:Event:list", {"chat_id": chat["chat_id"]}, org.member)["events"]
+                  if e["event"] == "card_closed"]
+        assert [{k: v for k, v in data.items() if k != "at"} for data in closed] == [
+            {"card_id": asked, "kind": "question", "answer": {"text": "Yes"}},
+            {"card_id": approval, "kind": "approval", "answer": None}]
+        assert all(data["at"] for data in closed)
 
     def test_a_runtime_cannot_open_a_form_of_its_own(self, world, runtime, chat):
         runtime.holds(chat["chat_id"])

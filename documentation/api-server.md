@@ -103,7 +103,8 @@ words for a person, and a refusal may add a field, such as `retry_after`.
 - what the policy editor says of it.
 
 **Permissions** come from a person's groups, Everyone included. A group holds policies, and a policy is a list of
-statements, under a name of its own in the organization that an administrator may change:
+statements, under a name of its own in the organization that an administrator may change. Who may use an installed
+agent is kept with the agent, by group (§5), and its rows are a person's statements too:
 
 ```
 {"effect": "allow" | "deny" | "ask", "actions": ["iam:user:*", …], "scopes": {…}}
@@ -111,10 +112,15 @@ statements, under a name of its own in the organization that an administrator ma
 
 - **An action** is an endpoint (`iam:user:set_groups`), a right that is no endpoint (`records:manage_any`), or what
   an agent does: one of its functions, or a runtime function it calls on one of its resources.
-- **A deny wins,** then an ask, then an allow. Nothing matching is a deny.
+- **A deny wins,** then an ask, then an allow. Nothing matching is a deny. A deny in an agent's rows or in a policy
+  wins over an allow in the other.
 - **`ask` and `scopes` are for agents' actions only.** An ask puts the question to the chat's person, who may
   remember the answer. Scopes narrow a function to the values its manifest's authorization scopes allow
-  ([agents](agents.md#5-the-manifest)).
+  ([agents](agents.md#5-the-manifest)): the runtime judges a call to a function, and what its program calls within
+  it, by the values its inputs carry, compared as the manifest normalizes them. A scoped statement holds a call when
+  each of its scopes that the function works along has the call's value among its own; a call that gives no value is
+  not within it; a scope the function doesn't work along doesn't narrow it. Where no call is known, such as which
+  agents a person may use, a scoped allow or ask may apply and a scoped deny waits for the call.
 - **After the policy,** a level above the chat's trust still waits for its person
   ([agents](agents.md#6-what-a-program-may-call)).
 - **The same rules are evaluated the same way** by the API server, for every call it receives, and by the runtime,
@@ -205,14 +211,34 @@ id is refused.
 uninstall too, and whatever the source. The same version with other bytes is refused.
 
 **An update** is a new version: the catalog shows it, an administrator reviews and installs it, and the agent keeps
-its records and its permissions.
+its records and who may use it.
 
-**Uninstalled,** an agent runs no more. Its records stay their people's, and installing it again gives them back to
-it.
+**Uninstalled,** an agent runs no more, and who may use it goes with it. Its records stay their people's, and
+installing it again gives them back to it; who may use it starts again from nobody.
 
-**Who may:** administrators save sources, and install, update and uninstall agents. Using an agent is a permission
-like any other (§3): a person's chats use the agents whose functions their policies allow. A person sees the agents
-they may use, their manifests and their samples.
+**Who may use an agent** is kept with the installed agent: rows, in order, each for one of the organization's groups.
+Whoever may install agents reads them (`Agents:Agent:access`) and sets them (`Agents:Agent:setaccess`).
+
+```jsonc
+{"group_id": "…", "effect": "allow" | "ask" | "deny", "functions": ["*"] | ["draft_send", …],
+ "scopes": {"mailbox": ["work"]}}   // optional: only scopes the manifest declares
+```
+
+- **A row is statements of its group's people** (§3): its functions, `agent:<id>:<function>`, and what each calls on
+  the runtime, `agent:<id>:<function>:*`; `"*"` is `agent:<id>:*`. So a row allowing or asking a function covers what
+  it calls, unless another row or a policy denies it.
+- **Policies naming agents' actions count too,** evaluated with the rows. Reading the rows also gives the
+  organization's groups with how many people each holds, the agent's functions and scopes, and the policies that
+  name it, which are changed where policies are.
+- **Checked:** the organization's groups, the agent's functions or every one, an effect, scopes it declares with lists
+  of values; at most 50 rows. Rows grant only agents' actions, never managing access: the bounds on people, groups
+  and policies (§3) are not theirs, and an organization keeps someone who manages access whatever they say.
+- **A change** is seen by every server at its next call, and the chats held read their contract again (§7). A group
+  deleted leaves no row.
+
+**Who may:** administrators save sources, and install, update and uninstall agents. A person's chats use the agents
+whose functions their rows or policies allow or ask. A person sees the agents they may use, their manifests and their
+samples.
 
 **Samples:** a person loads an agent's samples as their own records, listed for that agent. One call removes exactly
 what was loaded.
@@ -303,8 +329,8 @@ deleting takes its messages, cards, schedules and files with it. Its settings ar
 - The runtime decides when it lets a chat go ([agents](agents.md#2-the-runtime-ends-an-idle-process)). The chat is
   then held by none.
 - **Its contract** is what a runtime is given for a chat: the chat's settings, its person and organization, the
-  agents it uses with their manifests, the rules the person's policies make for those agents and the approvals they
-  remembered, and its model connection with its key and the model it uses. When any of it changes, the holder is
+  agents it uses with their manifests, the rules the person's policies and those agents' rows make (§5) and the
+  approvals they remembered, and its model connection with its key and the model it uses. When any of it changes, the holder is
   given it again.
 - **Its state** is the assistant's: written by the holder alone, in named parts merged into a document of its own,
   each save the parts that changed (or all of them), up to 4 MiB in all, and never read by the API server.
@@ -319,7 +345,9 @@ that posted it. Each is numbered in its chat, so a chat has one order.
 **Events** are what happens in a chat as it happens: the assistant working or idle, each piece of its work as it
 begins, waits and ends (with why, what it was given, its output's first line and ref, the files it returned and the
 records it touched), progress notes, cards opened and closed, a schedule's runs, and the chat's settings changed by its
-person. The holder writes them, but for the settings, which the API server does. Every API server follows the events kept, through one change
+person. A card's `card_closed` keeps what was decided, so a chat read again shows each question with its answer:
+`{card_id, kind, answer, at}`, the answer as kept on the card, never a secret value, or `null` when it expired
+unanswered. The holder writes them, but for the settings, which the API server does. Every API server follows the events kept, through one change
 stream it resumes where it stopped, and sends those of the chats its browsers have open, so they reach the person
 whichever server their browser reached (§1). The last 500 are kept, read again when a browser opens the chat
 (`AI:Event:list`); each is numbered in its chat, so a gap in the numbers is always an event missed. A piece of work's
@@ -364,6 +392,12 @@ before it; one older than an event the browser took already came late, and is dr
 - A run that needs its person waits on the card, however long they take, and its person is told
   ([assistant](assistant.md#8-asking-the-person)).
 - At most 50 to a chat, and a cap for each person and each organization (§9).
+
+**A person calls one of an agent's functions** in their chat themselves (`AI:Chat:call`, its agent, function
+and inputs): its holder runs it now, attended, through the same gate as the assistant's calls
+([runtime](runtime.md#5-the-gate)), as a piece of the chat's work whose origin is `person`; what it notes, progress
+and screens, reaches the chat as any call's does. It is refused when the chat doesn't use the agent, its person may
+not, or the agent has no such function. The web client opens an agent's live browser this way.
 
 **Stopping.** A person stops a chat: its work is cancelled and its cards expire. Or they stop one call or task of
 it, by the id its `work` event gave, and the rest goes on. They may stop everything of theirs,

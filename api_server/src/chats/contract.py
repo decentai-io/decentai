@@ -20,6 +20,12 @@ class Contract:
         return [agent for agent in Agents().ready(chat["org_id"])
                 if (chosen is None or agent["agent_id"] in chosen) and rules.uses(person, agent)]
 
+    def function(self, chat: dict[str, Any], person: dict[str, Any], agent_id: str,
+                 function_id: str) -> dict[str, Any] | None:
+        """One function of an agent the chat uses and its person may use."""
+        agent = next((a for a in self.agents(chat, person) if a["agent_id"] == agent_id), None)
+        return next((f for f in (agent or {}).get("manifest", {}).get("functions", []) if f["id"] == function_id), None)
+
     def of(self, chat: dict[str, Any], person: dict[str, Any]) -> dict[str, Any]:
         """``person``, the chat's, read with their organization: their permissions are kept by its access version."""
         org = OrgSettings().of(chat["org_id"], person["organization"].get("settings") or {})

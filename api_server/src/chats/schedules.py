@@ -76,8 +76,7 @@ class ScheduleEndpoints(Controller):
         if raw.get("prompt"):
             return {"prompt": str(raw["prompt"])[:4000]}
         agent_id, _, function_id = str(raw.get("function") or "").partition(".")
-        agent = next((a for a in Contract().agents(chat, person) if a["agent_id"] == agent_id), None)
-        function = next((f for f in (agent or {}).get("manifest", {}).get("functions", []) if f["id"] == function_id), None)
+        function = Contract().function(chat, person, agent_id, function_id)
         if function is None or function.get("schedulable") is not True:
             raise ValueError("Name agent.function marked schedulable, of an agent this chat uses, or a prompt.")
         inputs = raw.get("inputs") if isinstance(raw.get("inputs"), dict) else {}

@@ -185,6 +185,12 @@ class Groups(Store):
         query = {"org_id": org_id, **({"_id": {"$in": [str(i) for i in ids]}} if ids is not None else {})}
         return list(self.col.find(query).sort("name", Store.ASC))
 
+    def counted(self, org_id: str) -> list[dict[str, Any]]:
+        """The organization's groups, each with how many people it holds as ``members``."""
+        people = Users().in_org(org_id)
+        return [{**group, "members": len(people) if group["everyone"] else
+                 sum(group["_id"] in person.get("groups", []) for person in people)} for group in self.in_org(org_id)]
+
     @staticmethod
     def clean_name(name: Any) -> str:
         name = " ".join(str(name or "").split())

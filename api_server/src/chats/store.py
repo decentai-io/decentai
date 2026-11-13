@@ -213,6 +213,12 @@ class Cards(Store):
         return found
 
     @staticmethod
+    def closed(card: dict[str, Any]) -> dict[str, Any]:
+        """A card's ``card_closed`` event: its kind, its answer as kept (None: it expired unanswered), and when."""
+        return {"card_id": card["_id"], "kind": card["kind"], "answer": card.get("answer"),
+                "at": card.get("answered_at") or Cards.now()}
+
+    @staticmethod
     def public(card: dict[str, Any]) -> dict[str, Any]:
         return {"card_id": card["_id"], "chat_id": card["chat_id"], "kind": card["kind"], "call": card["call"],
                 "agent": card["agent"], "request": card["request"], "status": card["status"], "at": card["at"],

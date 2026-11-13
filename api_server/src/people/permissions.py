@@ -7,6 +7,7 @@ from fnmatch import fnmatchcase
 from typing import Any, Callable
 
 from shared.rules import ALLOW, ASK, DENY, evaluate
+from ..agents.store import Agents
 from ..doors.calls import Refused
 from .store import Access, Groups, Organizations, Policies, Users
 
@@ -15,7 +16,8 @@ __all__ = ["ALLOW", "ASK", "DENY", "Rules", "Bounds"]
 
 class Rules:
     """A deny wins, then an ask, then an allow; nothing matching is a deny. ``ask`` and ``scopes`` are for agents'
-    actions alone: ``agent:<agent>:<function>``, and ``agent:<agent>:<function>:<call>`` for what it calls."""
+    actions alone: ``agent:<agent>:<function>``, and ``agent:<agent>:<function>:<call>`` for what it calls. A person's
+    statements are their groups' policies' and the rows installed agents keep for their groups."""
 
     #: What every person needs: their own chats, records and settings, the agents list, their keys.
     MEMBER = ("account:*", "auth:*", "ai:chat:*", "ai:message:list", "ai:event:list", "ai:output:see", "ai:approval:*",
@@ -41,7 +43,10 @@ class Rules:
         def read() -> list[dict[str, Any]]:
             groups = Groups().of(person)
             names = [name for group in groups for name in group.get("policies") or [] if name not in self.BUILT_IN]
-            return self.held(groups, Policies().in_org(person["org_id"], names) if names else [])
+            ids = {group["_id"] for group in groups}
+            rows = [statement for agent in Agents().with_access(person["org_id"], ids) for statement in
+                    self.rows(agent["agent_id"], [row for row in agent["access"] if row["group_id"] in ids])]
+            return self.held(groups, Policies().in_org(person["org_id"], names) if names else []) + rows
         return Access.kept("statements", person, read)
 
     def held(self, groups: list[dict[str, Any]], policies: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -50,6 +55,17 @@ class Rules:
         found = [self.BUILT_IN.get(name) or kept.get(name)
                  for name in {name for group in groups for name in group.get("policies") or []}]
         return [statement for policy in found if policy for statement in policy.get("statements") or []]
+
+    @staticmethod
+    def rows(agent_id: str, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """An installed agent's access rows as statements: each row's functions, and what they call."""
+        def actions(functions: list[str]) -> list[str]:
+            if functions == ["*"]:
+                return [f"agent:{agent_id}:*"]
+            return [action for function in functions
+                    for action in (f"agent:{agent_id}:{function}", f"agent:{agent_id}:{function}:*")]
+        return [{"effect": row["effect"], "actions": actions(row["functions"]),
+                 **({"scopes": row["scopes"]} if row.get("scopes") else {})} for row in rows]
 
     def allows(self, person: dict[str, Any], action: str) -> str:
         return self.evaluate(self.statements(person), action)

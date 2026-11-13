@@ -33,7 +33,7 @@ and each of the person's skills the assistant reads and MCP tools it calls. All 
 in the chat waits for it, and what an API server doesn't take is a line in the log, never a failure.
 
 **An API server tells it,** for a chat: a person's message, a card's answer, a new contract, a stop, a screen's
-input, a schedule due, a resume, and a close. A chat's frames are taken one at a time, in the order they came; a
+input, a schedule due, a function its person calls, a resume, and a close. A chat's frames are taken one at a time, in the order they came; a
 card's answer goes at once to what waits on it. It asks it to check an agent, a model connection, or an MCP
 server's tools.
 
@@ -153,7 +153,7 @@ reads the chat's contract, and takes only the chat's actions; it runs its own ta
 | The assistant is told (`told`) | The assistant may |
 |---|---|
 | the person's message, a webhook's | `say` something in the chat, with files agents made; send an `event` |
-| a schedule due, its prompt or its function, with its trust | `call` an agent's function, and `mcp` a person's tool, through the gate at a run's trust |
+| a schedule due, its prompt or its function, with its trust; a function its person calls | `call` an agent's function, and `mcp` a person's tool, through the gate at a run's trust |
 | a stop, or a stop of one call or task | `ask` the person a question, however long they take; `offer` a memory or a skill; `expire` a card |
 | a card answered after its work stopped waiting | `schedule`, list its `schedules`, `unschedule`; say how a run `ran` |
 | a new contract | `think` with the model; `report` what it did, such as a skill read; `save` its state; `store` an output whole and read its `output`; read a `file` |
