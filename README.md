@@ -52,8 +52,8 @@ front of it.
 With Docker (and Compose) running, and Python 3.9 or later:
 
 ```bash
-git clone https://github.com/decentai-io/decentai.git
-cd decentai
+git clone https://github.com/decentai-io/decentai-engine.git
+cd decentai-engine
 python deploy/setup/setup.py
 ```
 

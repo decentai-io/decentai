@@ -1,7 +1,7 @@
 # Known gaps
 
 What the redesigned platform still has to fix, test or decide, found on 2026-11-10 by comparing it with the platform
-before the redesign (`decentai-io/decentai` at `007e4da`, 2026-10-26, kept in the offline archive
+before the redesign (`decentai-io/decentai-engine` at `007e4da`, 2026-10-26, kept in the offline archive
 `decentai_archive_old.zip`; "the old" below). Each item has an ID to refer to it by in commits and issues; tick it
 when it is done, or strike it with the reason when it is dropped on purpose.
 
