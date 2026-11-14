@@ -1,7 +1,8 @@
 # Contributing
 
-DecentAI is Apache-2.0. By submitting a contribution you agree it is licensed the same way (see section 5 of the
-LICENSE); there is no separate agreement to sign. An agent isn't contributed here: anyone may publish one
+DecentAI is source-available under the PolyForm Small Business License 1.0.0 (see the README). By submitting a
+contribution you license it to DECENT INTELLIGENCE ARTIFICIAL SERVICES under the Apache License 2.0, so that it can be
+offered under the project's licence and under commercial licences; there is no separate agreement to sign. An agent isn't contributed here: anyone may publish one
 ([agents](documentation/agents.md#10-publishing)).
 
 ## Before you write code

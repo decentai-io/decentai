@@ -78,4 +78,12 @@ docker compose --env-file deploy/config/deploy.env start    # start it again
 ## Contributing, security, licence
 
 How to contribute and run the tests is in [CONTRIBUTING.md](CONTRIBUTING.md); how to report a vulnerability, in
-[SECURITY.md](SECURITY.md). DecentAI is licensed under the Apache License 2.0 ([LICENSE](LICENSE)).
+[SECURITY.md](SECURITY.md).
+
+DecentAI is source-available under the [PolyForm Small Business License 1.0.0](LICENSE), with an added permission for
+personal use. It is free to use, change and share for yourself, and for a business with fewer than 100 people
+(employees and contractors together) and under US$1 million (in 2019 dollars) of revenue in its prior tax year. A larger organization
+needs a commercial licence: write to [ahmed@decentai.io](mailto:ahmed@decentai.io). Agents are not covered by this:
+the agent catalogs ([decentai-official-agents](https://github.com/decentai-io/decentai-official-agents),
+[decentai-browser-agent](https://github.com/decentai-io/decentai-browser-agent)) stay under Apache 2.0, and anyone
+may write and publish an agent.

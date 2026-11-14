@@ -93,7 +93,7 @@ jobs:
             org.opencontainers.image.version=${{ steps.version.outputs.number }}
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.licenses=Apache-2.0
+            org.opencontainers.image.licenses=LicenseRef-PolyForm-Small-Business-1.0.0-DecentAI
 
       # A matrix job's outputs are the last one's, so each image leaves
       # its digest as a file the release collects.
