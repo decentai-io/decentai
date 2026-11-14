@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import json
+import os
 import time
 from datetime import timedelta
 from typing import Any
 
+from communication.identity import Identity
 from ..chats.store import Chats
 from ..doors.calls import RUNTIME, Caller, Controller, Refused, endpoint
 from ..people.endpoints import People
+from ..utils import Settings
 from .calls import RuntimeCalls
 from .store import Refusals, Runtimes
 
@@ -181,9 +186,39 @@ class AuthorityEndpoints(Controller):
 
     @endpoint("Make an enrollment token; it is shown once")
     async def create(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
-        kind, shared = str(data.get("kind") or "runtime"), data.get("shared") is True
+        kind = str(data.get("kind") or "runtime")
         if kind not in self.KINDS:
             raise Refused("invalid", "A token is for a runtime or a sandbox.")
+        return await self._made(kind, data, caller)
+
+    @endpoint("Make a join code: a runtime's and a sandbox's tokens, with where to enroll and whom to trust, for "
+              "another computer to join with; it is shown once")
+    async def join(self, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
+        """``decentai-join:`` and the base64url, unpadded, of what a node needs: the issuer and API servers at their
+        public host:port, this deployment's roots, and its two tokens."""
+        settings = Settings.read()
+        if not settings.nodes_issuer or not settings.nodes_servers:
+            raise Refused("conflict", "Join codes need AI_API_NODES_ISSUER and AI_API_NODES_SERVERS set: the "
+                                      "issuer's and the API servers' public host:port.")
+        try:
+            with open(os.path.join(settings.identity, Identity.ROOTS_FILE), encoding="utf-8") as file:
+                roots = file.read()
+        except FileNotFoundError:
+            raise Refused("conflict", "This server has no roots.pem yet: it has not enrolled.") from None
+        runtime = await self._made("runtime", data, caller)
+        try:
+            sandbox = await self._made("sandbox", data, caller)
+        except ValueError:
+            await RuntimeCalls().issuer("Certificates:Token:withdraw", {"id": runtime["id"]})
+            raise
+        joined = {"v": 1, "issuer": settings.nodes_issuer, "api_servers": settings.nodes_servers, "roots": roots,
+                  "tokens": {"runtime": runtime["token"], "sandbox": sandbox["token"]}}
+        code = base64.urlsafe_b64encode(json.dumps(joined, separators=(",", ":")).encode()).decode().rstrip("=")
+        return {"code": f"decentai-join:{code}", "expires": min(runtime["expires"], sandbox["expires"])}
+
+    async def _made(self, kind: str, data: dict[str, Any], caller: Caller) -> dict[str, Any]:
+        """A token of this kind from the issuer, for the organization's own nodes or, the operator's, shared."""
+        shared = data.get("shared") is True
         if shared and not await asyncio.to_thread(People.operator, caller.person):
             raise Refused("refused", "Only the operator makes shared tokens.")
         labels = {"labels": [str(label) for label in data.get("labels") or []][:20]}

@@ -5,6 +5,8 @@ COPY communication/*.py ./communication/
 COPY issuer/*.py ./issuer/
 # The one-shot that fills the identity folders of the nodes Compose starts, with the issuer's store.
 COPY deploy/setup/identities.py ./setup/
+# The root tool, so the root is made and signs from this image with no checkout: python tools/decentai_root.py.
+COPY tools/decentai_root.py ./tools/
 
 COPY issuer/requirements.txt ./issuer-requirements.txt
 RUN pip install --no-cache-dir --require-hashes -r issuer-requirements.txt \

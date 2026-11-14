@@ -154,8 +154,8 @@ The sandbox is given 75 seconds to stop: an
 
    Without it nsjail can't make its jails, and the sandbox doesn't start.
 
-The desktop app's origins, `http://tauri.localhost` and `tauri://localhost`, are answered only when named in
-`AI_API_ORIGINS`.
+The desktop app's origins, `http://tauri.localhost` and `tauri://localhost`, are answered when `AI_API_ORIGINS` is
+unset or names them, as the template does; an `AI_API_ORIGINS` without them turns the app away.
 
 ## 4. From day to day
 
@@ -170,7 +170,10 @@ there too. The API server's, in `AI_API_DATABASE_URI`, is set again at every sta
 **Releases:** a version is tagged `vX.Y.Z` on a commit whose tests passed; `.github/workflows/release.yml` builds the
 five images (`decentai-api-server`, `decentai-ai-runtime`, `decentai-issuer`, `decentai-sandbox`, `decentai-speech`)
 for amd64 and arm64, publishes them to `ghcr.io/decentai-io` under the version alone, and writes their digests in the
-release notes. To run one: set `DECENTAI_VERSION` (without the `v`), then
+release notes. It attaches the deploy bundle, `decentai-engine-deploy-X.Y.Z.tar.gz`, with its SHA-256 in the notes:
+the Compose file, the settings' template, the issuer's database account, the sandbox's seccomp profile and the root
+tool, at their paths in the repository, and `images.json`, each image by digest. The issuer's image carries the root
+tool too, at `/opt/decentai/tools/decentai_root.py`. To run one: set `DECENTAI_VERSION` (without the `v`), then
 `docker compose --env-file deploy/config/deploy.env pull` and `up -d --no-build`. `DECENTAI_IMAGES` names another
 registry, for a fork. Unset, the images are built from the checkout, tagged `local`.
 
@@ -206,6 +209,12 @@ not be opened with any key it has: removing the old key changes nothing for it.
   (`AI_API_OPERATOR_ORG`, else the first made), `shared`. A token enrolls one node within 7 days unless its `uses`
   and `expires` say otherwise; the node's certificate lasts its `lifetime`, 12 hours unless set, and is renewed from
   halfway. A node that stays down past its certificate's end enrolls again, with a token that still has a use.
+- **Join codes:** with `AI_API_NODES_ISSUER` (the issuer's public `host:port`) and `AI_API_NODES_SERVERS` (each API
+  server's public `host:port` for runtimes, comma-separated) set, an administrator makes a join code instead
+  (`Nodes:Authority:join`, or **Make a join code** on the Nodes page; it takes what a token takes, but the kind): a
+  runtime's token and a sandbox's, those addresses and the deployment's `roots.pem`, in one line that is shown once.
+  The DecentAI desktop app takes it under **Lend this computer** and runs a runtime and a sandbox that join this
+  deployment. The issuer's and the API servers' 8004 must then be published (**Ports**, below).
 - **The node's identity folder** holds `roots.pem`, `enroll` (`<issuer host>:8004 issuer`) and the token. A runtime is
   given `AI_RUNTIME_API_SERVERS`, `AI_RUNTIME_ADDRESS` and `AI_RUNTIME_IDENTITY`, and is open on 8004 to API servers
   and sandboxes and on 8005 to its sandboxes; a sandbox, `AI_SANDBOX_CALLERS`, `AI_SANDBOX_ADDRESS` and

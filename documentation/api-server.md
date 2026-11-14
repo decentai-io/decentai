@@ -697,6 +697,12 @@ sandboxes, and for each organization and agent its processes, their memory and t
 - The operator's administrators also make shared tokens, whose runtimes serve every organization that doesn't keep
   to its own (§2).
 - The API server asks the issuer for all of it, gives it a page at a time (§9), and never holds a token's secret.
+- They also make a **join code**, shown once: a runtime's token and a sandbox's, made as above, with what another
+  computer needs to enroll with them. It is `decentai-join:` and the base64url, unpadded, of
+  `{"v": 1, "issuer": "host:port", "api_servers": ["host:port"], "roots": "<roots.pem>", "tokens": {"runtime": "…",
+  "sandbox": "…"}}`: the issuer and API servers at their public addresses (`AI_API_NODES_ISSUER`,
+  `AI_API_NODES_SERVERS`), and the roots in the server's own identity folder. Without both settings it is refused,
+  saying which to set. The DecentAI desktop app takes it under **Lend this computer**.
 
 **A runtime reports itself** every few seconds (§2): where it is reached, the chats it holds, whether it is full, the
 id of its start, and its sandboxes, with their room and what runs on them. Nobody fills the list in: a runtime is on it
@@ -779,7 +785,7 @@ Nothing else needs a key: session tokens are random values (§2).
 | `AI_API_PROXIES` | the proxies whose forwarded headers it believes | `127.0.0.1` |
 | `AI_API_URL` | its own address, as browsers and providers reach it: OAuth's redirect is made of it | required |
 | `AI_API_APP_URL` | where people open the web client: the links in mail and notifications are made of it | required |
-| `AI_API_ORIGINS` | every origin the web client is served from | `AI_API_APP_URL` |
+| `AI_API_ORIGINS` | every origin the web client is served from | `AI_API_APP_URL`, and the desktop app's `http://tauri.localhost` and `tauri://localhost` |
 | `AI_API_DATABASE_URI`, `AI_API_DATABASE_NAME` | the database; a URI that still says `change-me` is refused | required, `decentai` |
 | `AI_API_ENCRYPTION_KEYS`, `AI_API_ENCRYPTION_ACTIVE` | its keys | required |
 | `AI_API_STORAGE` | `local`, `s3` or `azure` | `local` |
@@ -793,6 +799,7 @@ Nothing else needs a key: session tokens are random values (§2).
 | `AI_API_SETUP_CODE` | the first run's code, required until the first run is done; `change-me` is refused | none |
 | `AI_API_OPERATOR_ORG` | the operator's organization | the first one made |
 | `AI_API_REFERENCE_CATALOG` | a catalog address the Agents page suggests | none |
+| `AI_API_NODES_ISSUER`, `AI_API_NODES_SERVERS` | the issuer's public `host:port`, and the API servers' for runtimes, comma-separated: what a join code names (§10); without both there are no join codes | none |
 | `AI_API_METRICS_TOKEN` | the bearer token `/metrics` asks for, at least 24 characters; without it there is no `/metrics` (§9) | none |
 | `AI_API_LOG_LEVEL`, `AI_API_LOG_FORMAT` | its log, on standard output: `DEBUG`, `INFO`, `WARNING` or `ERROR`; as `text` or `json` | `INFO`, `text` |
 

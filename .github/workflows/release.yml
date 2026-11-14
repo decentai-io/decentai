@@ -1,6 +1,7 @@
 # A release: the engine's five images, published under the version a
-# tag names (v0.6.0), and a GitHub release that names each by digest.
-# Runs when a version is tagged. documentation/operating.md, "Releases",
+# tag names (v0.6.0), and a GitHub release that names each by digest,
+# with the deploy bundle the stack runs from (decentai-engine-deploy-
+# 0.6.0.tar.gz). Runs when a version is tagged. documentation/operating.md, "Releases",
 # says how a version is cut and run.
 #
 # What it needs of the repository: nothing but its own token. The
@@ -113,15 +114,45 @@ jobs:
     needs: image
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: digest-*
           path: digests
           merge-multiple: true
 
+      # The files the stack needs beside the images, at their paths in the repository, and images.json, which
+      # names each image by digest: what the desktop's launcher runs a release from (decentai-desktop-app,
+      # docs/plan.md §1).
+      - name: The deploy bundle
+        id: bundle
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          jq -n \
+            --arg api_server "$(cat digests/api-server)" \
+            --arg ai_runtime "$(cat digests/ai-runtime)" \
+            --arg issuer "$(cat digests/issuer)" \
+            --arg sandbox "$(cat digests/sandbox)" \
+            --arg speech "$(cat digests/speech)" \
+            '{"api-server": $api_server, "ai-runtime": $ai_runtime, "issuer": $issuer, "sandbox": $sandbox,
+              "speech": $speech}' > images.json
+          bundle="decentai-engine-deploy-${version}.tar.gz"
+          tar --create --gzip --file "$bundle" --owner=0 --group=0 --numeric-owner \
+            deploy/docker-compose.yml \
+            deploy/config/deploy.env.example \
+            deploy/setup/issuer-account.js \
+            sandbox/config/seccomp.json \
+            tools/decentai_root.py \
+            images.json
+          tar --list --file "$bundle"
+          echo "file=${bundle}" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(sha256sum "$bundle" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
+          BUNDLE: ${{ steps.bundle.outputs.file }}
+          BUNDLE_SHA256: ${{ steps.bundle.outputs.sha256 }}
         run: |
           version="${GITHUB_REF_NAME#v}"
           {
@@ -133,13 +164,32 @@ jobs:
               echo "| decentai-${image} | \`$(cat "digests/${image}")\` |"
             done
             echo
+            echo "The deploy bundle, \`${BUNDLE}\`: the Compose file, the settings' template, the issuer's database"
+            echo "account, the sandbox's seccomp profile, the root tool, and \`images.json\` (these digests)."
+            echo "Its SHA-256: \`${BUNDLE_SHA256}\`."
+            echo
             echo "To run it: \`DECENTAI_VERSION=${version}\` in deploy/config/deploy.env, then"
             echo "\`docker compose --env-file deploy/config/deploy.env pull\` and \`up -d --no-build\`"
             echo "(documentation/operating.md, Releases)."
           } > notes.md
-          gh release create "$GITHUB_REF_NAME" \
+          gh release create "$GITHUB_REF_NAME" "$BUNDLE" images.json \
             --repo "$GITHUB_REPOSITORY" \
             --title "DecentAI engine ${version}" \
             --notes-file notes.md \
             --generate-notes \
             --verify-tag
+
+      # The desktop app runs the engine: its release workflow is told there
+      # is a new one, and releases the app with it, so installed apps update.
+      # Without the token (a fine-grained token with Actions: write on
+      # decentai-desktop-app), the desktop's daily check finds it instead.
+      - name: Tell the desktop app's release
+        env:
+          GH_TOKEN: ${{ secrets.DESKTOP_DISPATCH_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "No DESKTOP_DISPATCH_TOKEN: the desktop app's daily check finds this release."
+            exit 0
+          fi
+          gh api "repos/${{ github.repository_owner }}/decentai-desktop-app/dispatches" \
+            -f event_type=engine-released -F "client_payload[version]=${GITHUB_REF_NAME#v}"

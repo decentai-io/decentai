@@ -26,6 +26,9 @@ class SettingsRefused(ValueError):
 class Settings:
     """Every AI_API_* variable, read once from the environment."""
 
+    # The desktop app's origins: a server answers the app unless its operator names other origins.
+    APP_ORIGINS = "http://tauri.localhost,tauri://localhost"
+
     _read: Settings | None = None
 
     def __init__(self, environment: dict[str, str]):
@@ -36,7 +39,7 @@ class Settings:
         self.proxies = self._list("AI_API_PROXIES", "127.0.0.1")
         self.url = self._required("AI_API_URL").rstrip("/")
         self.app_url = self._required("AI_API_APP_URL").rstrip("/")
-        self.origins = self._list("AI_API_ORIGINS", self.app_url)
+        self.origins = self._list("AI_API_ORIGINS", f"{self.app_url},{self.APP_ORIGINS}")
         self.database_uri = self._required("AI_API_DATABASE_URI")
         if "change-me" in self.database_uri:
             raise SettingsRefused("AI_API_DATABASE_URI still says change-me: give the database a password of your own.")
@@ -80,6 +83,8 @@ class Settings:
         self.schedules_per_person = self._number("AI_API_SCHEDULES_PER_PERSON", 200, 1, 100000)
         self.schedules_per_org = self._number("AI_API_SCHEDULES_PER_ORG", 2000, 1, 1000000)
         self.kept_days = self._number("AI_API_KEPT_DAYS", 400, 1, 36500)
+        self.nodes_issuer = self._address("AI_API_NODES_ISSUER")
+        self.nodes_servers = [self._address("AI_API_NODES_SERVERS", one) for one in self._list("AI_API_NODES_SERVERS")]
 
     @classmethod
     def read(cls) -> Settings:
@@ -109,6 +114,14 @@ class Settings:
         if value not in choices:
             raise SettingsRefused(f"{name} is one of: {', '.join(choices)}.")
         return value
+
+    def _address(self, name: str, given: str | None = None) -> str:
+        """host:port, or '' for none given."""
+        text = self._text(name) if given is None else given
+        host, _, port = text.rpartition(":")
+        if text and (not host or " " in text or "," in text or not port.isdigit() or not 1 <= int(port) <= 65535):
+            raise SettingsRefused(f"{name}: '{text}' is not host:port.")
+        return text
 
     def _number(self, name: str, default: int, low: int, high: int) -> int:
         text = self._text(name, str(default))

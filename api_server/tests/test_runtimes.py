@@ -1,15 +1,21 @@
-"""Runtimes: their reports, drains, refusals and where chats are placed (api-server.md §2, §7, §10)."""
+"""Runtimes: their reports, drains, refusals and where chats are placed, and the join codes other computers enroll
+with (api-server.md §2, §7, §10)."""
 
 from __future__ import annotations
 
 import asyncio
+import base64
+import json
 from datetime import timedelta
+
+import pytest
 
 from conftest import Runtime
 from api_server.chats.store import Chats, Events
 from api_server.doors.callers import Callers
 from api_server.runtimes.calls import RuntimeCalls
 from api_server.runtimes.store import Runtimes
+from api_server.utils import Settings, SettingsRefused
 
 
 def report(world, runtime, **extra):
@@ -119,3 +125,64 @@ class TestWhatAnOrganizationSees:
             own.holds(world.ok("AI:Chat:create", {}, member)["chat"]["chat_id"])
         node = next(n for n in world.ok("Nodes:Node:list", {}, org.admin)["nodes"] if n["node_id"] == own.peer["id"])
         assert (node["held_chats"], node["held_elsewhere"]) == (2, 1)
+
+
+class TestJoinCodes:
+    ROOTS = "-----BEGIN CERTIFICATE-----\nroots\n-----END CERTIFICATE-----\n"
+
+    @pytest.fixture
+    def issuer(self, monkeypatch, tmp_path):
+        """A server that knows its public addresses and has enrolled, and an issuer that keeps what it is asked."""
+        (tmp_path / "roots.pem").write_text(self.ROOTS, encoding="utf-8")
+        for name, value in (("identity", str(tmp_path)), ("nodes_issuer", "issuer.acme.test:8004"),
+                            ("nodes_servers", ["api-1.acme.test:8004", "api-2.acme.test:8004"])):
+            monkeypatch.setattr(Settings.read(), name, value)
+        asked = []
+
+        async def issued(calls, endpoint, data):
+            asked.append((endpoint, data))
+            if data.get("kind") == "sandbox" and "fail" in data["metadata"]["labels"]:
+                raise ValueError("The issuer refused.")
+            return {"token": f"secret-{data.get('kind')}", "id": f"tok_{len(asked)}", "uses": 1,
+                    "expires": 1000 + len(asked)}
+        monkeypatch.setattr(RuntimeCalls, "issuer", issued)
+        return asked
+
+    @staticmethod
+    def opened(code):
+        assert code.startswith("decentai-join:") and "=" not in code
+        packed = code.removeprefix("decentai-join:")
+        return json.loads(base64.urlsafe_b64decode(packed + "=" * (-len(packed) % 4)))
+
+    def test_a_join_code_holds_where_to_enroll_whom_to_trust_and_two_tokens(self, world, org, issuer):
+        answer = world.ok("Nodes:Authority:join", {"labels": ["gpu"], "lifetime": 3600, "uses": 2}, org.admin)
+        assert self.opened(answer["code"]) == {
+            "v": 1, "issuer": "issuer.acme.test:8004", "api_servers": ["api-1.acme.test:8004", "api-2.acme.test:8004"],
+            "roots": self.ROOTS, "tokens": {"runtime": "secret-runtime", "sandbox": "secret-sandbox"}}
+        assert answer["expires"] == 1001
+        metadata = {"labels": ["gpu"], "scope": org.org_id}
+        assert issuer == [("Certificates:Token:create", {"kind": kind, "metadata": metadata, "lifetime": 3600,
+                                                         "uses": 2}) for kind in ("runtime", "sandbox")]
+
+    def test_without_the_public_addresses_or_an_administrator_there_is_none(self, world, org, issuer, monkeypatch):
+        world.refused("Nodes:Authority:join", {}, org.member, 403)
+        monkeypatch.setattr(Settings.read(), "nodes_servers", [])
+        message = world.refused("Nodes:Authority:join", {}, org.admin, 409)["message"]
+        assert "AI_API_NODES_ISSUER" in message and "AI_API_NODES_SERVERS" in message
+        assert issuer == []
+
+    def test_a_runtime_token_whose_sandbox_token_was_not_made_is_withdrawn(self, world, org, issuer):
+        world.refused("Nodes:Authority:join", {"labels": ["fail"]}, org.admin, 400)
+        assert issuer[-1] == ("Certificates:Token:withdraw", {"id": "tok_1"})
+
+    def test_the_public_addresses_are_host_and_port(self):
+        environment = {"AI_API_URL": "https://api.test", "AI_API_APP_URL": "https://app.test",
+                       "AI_API_DATABASE_URI": "mongodb://mongo", "AI_API_ENCRYPTION_KEYS": "01:k",
+                       "AI_API_ENCRYPTION_ACTIVE": "01"}
+        settings = Settings({**environment, "AI_API_NODES_ISSUER": "issuer.acme.test:8004",
+                             "AI_API_NODES_SERVERS": "api-1.acme.test:8004, api-2.acme.test:8004"})
+        assert settings.nodes_servers == ["api-1.acme.test:8004", "api-2.acme.test:8004"]
+        assert Settings(environment).origins == ["https://app.test", "http://tauri.localhost", "tauri://localhost"]
+        for name, value in (("AI_API_NODES_ISSUER", "issuer.acme.test"), ("AI_API_NODES_SERVERS", "api.test:99999")):
+            with pytest.raises(SettingsRefused, match=name):
+                Settings({**environment, name: value})
