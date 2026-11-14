@@ -134,8 +134,8 @@ which matter with scale, are for later.
   supervisor from the kernel's OOM killer. `sandbox/src/__main__.py`, `sandbox/src/watch.py`. *Done:* Each jail starts
   with `oom_score_adj` 1000.
 - [ ] **P11** A node's certificate from an administrator's token lasts 12 hours: a remote node down longer cannot
-  enrol again without a new token. *Do:* renew on a certificate still valid, and say how long one lasts where the
-  token is made.
+  enrol again without a new token. A join code's tokens are the same: a lent computer asleep longer needs a new code.
+  *Do:* renew on a certificate still valid, and say how long one lasts where the token is made.
 - [ ] **P13** What an agent writes is held to less than what a person writes: `record.create` of a file skips the
   resource's `constraints` (types, size), a sample's files too, and an agent's record may leave `required` fields
   empty. *Do:* check both on every write, whoever writes.

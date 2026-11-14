@@ -56,6 +56,8 @@ class Settings:
 
     TEMPLATE, FILE = "deploy/config/deploy.env.example", "deploy/config/deploy.env"
     DEFAULT_PORT, WEB_CLIENT_PORT, WEB_CLIENT_DEV_PORT = 4280, 4300, 4200
+    # The DecentAI desktop app's origins, which the API server answers too.
+    APP_ORIGINS = "http://tauri.localhost,tauri://localhost"
 
     def __init__(self):
         self.path = Docker.FOLDER / self.FILE
@@ -73,7 +75,8 @@ class Settings:
         made = {
             "PORT": str(port), "AI_API_URL": f"http://localhost:{port}",
             "AI_API_APP_URL": f"http://localhost:{self.WEB_CLIENT_PORT}",
-            "AI_API_ORIGINS": f"http://localhost:{self.WEB_CLIENT_PORT},http://localhost:{self.WEB_CLIENT_DEV_PORT}",
+            "AI_API_ORIGINS": f"http://localhost:{self.WEB_CLIENT_PORT},http://localhost:{self.WEB_CLIENT_DEV_PORT},"
+                              f"{self.APP_ORIGINS}",
             "MONGO_ROOT_PASSWORD": secrets.token_urlsafe(32), "ISSUER_DATABASE_PASSWORD": secrets.token_urlsafe(32),
             "AI_API_DATABASE_URI": f"mongodb://api:{secrets.token_urlsafe(32)}@mongo:27017/?replicaSet=rs0"
                                    f"&authSource=decentai",
