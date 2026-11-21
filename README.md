@@ -1,33 +1,36 @@
-# DecentAI for the desktop
+# DecentAI
 
-DecentAI on your own computer, for Windows and macOS. Free.
+DecentAI is an agentic AI platform you run yourself: on your own computer, on a server, in your data centre or in
+your cloud. This repository is where it is released. It holds releases and documentation, and no source.
 
-**[Download the latest release](https://github.com/decentai-io/decentai-desktop/releases/latest)**
+**[The latest release](https://github.com/decentai-io/decentai/releases/latest)**
 
-- **Windows:** `DecentAI-Setup.exe`
-- **macOS:** `DecentAI.dmg`, for Intel and Apple silicon
+## One release, every way of running it
 
-DecentAI runs on your computer, in containers (Docker Desktop or Podman), with your data staying there.
-The app can make it reachable from your phone or a browser anywhere: through Tailscale, ngrok, Cloudflare
-Tunnel, or a [DecentAI relay](https://github.com/decentai-io/decentai-relay) you run or trust. Each way has a
-step-by-step guide inside the app.
+Every release is the same two things, whatever runs it:
 
-The app updates itself, and DecentAI on your computer follows it.
-
-## What a release holds
+- **The images**, public and compiled, at `ghcr.io/decentai-io`: the engine's (`decentai-api-server`,
+  `decentai-ai-runtime`, `decentai-issuer`, `decentai-sandbox`), the web client's (`decentai-web-client`), and the
+  third-party ones the engine runs, copied in with their digests unchanged (`mongo`, `caddy`). Everything is pulled
+  from this one registry. The engine's images are signed with [cosign](https://docs.sigstore.dev/) by the release
+  workflow that built them.
+- **The release files**, attached to each release here:
 
 | File | |
 |---|---|
-| `DecentAI-Setup.exe`, `DecentAI.dmg` | the installers |
-| `DecentAI.app.tar.gz`, `*.sig`, `latest.json` | what installed apps update themselves from, signed |
-| `release.json`, `release.json.sig` | every image DecentAI runs, named by its digest, signed |
-| `decentai-engine-deploy-*.tar.gz` | the engine's deploy files that `release.json` names |
+| `decentai-X.Y.Z.tar.gz` | the deploy bundle: the Compose files, the settings' template, `setup.py` and the sandbox's profiles |
+| `images.json` | every image the release runs, by digest |
+| `SHA256SUMS` | the checksums of the two above |
 
-The images are public packages of this organization (`ghcr.io/decentai-io/desktop-*`), compiled.
+## Running it
+
+- **On a server**, a private data centre's or a cloud's: download the bundle of the latest release, then
+  `python3 deploy/setup/setup.py --domain ai.example.com` (the release notes give the exact commands).
+- **On your own computer**: the DecentAI desktop app, for Windows and macOS, is attached to releases once it is out.
+- **From your phone**: the DecentAI app, on the App Store and Google Play, given your deployment's address.
 
 ## Licence
 
-This repository holds releases only. DecentAI is proprietary software of DECENT INTELLIGENCE ARTIFICIAL
-SERVICES, free to use on your own computer with the licence the app carries (personal: any number of
-people, one runtime and one sandbox, no end date). Running DecentAI on servers for an organization is a
-separate licence: [decentai.io](https://decentai.io). Questions and problems: support@decentai.io.
+DecentAI is proprietary software of DECENT INTELLIGENCE ARTIFICIAL SERVICES. Without a licence a deployment runs in
+evaluation (3 people, 1 runtime, 1 sandbox); a licence file sets what it may do. For a licence, or any question:
+support@decentai.io, [decentai.io](https://decentai.io).
